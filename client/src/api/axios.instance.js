@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+let API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+
+// Auto-correct if the user forgot to include /api/v1 in their Vercel Environment Variables
+if (API_BASE_URL.startsWith('http') && !API_BASE_URL.includes('/api/v1')) {
+  API_BASE_URL = `${API_BASE_URL.replace(/\/$/, '')}/api/v1`;
+}
 
 /**
  * Axios instance configured for BPC Canteen API.
