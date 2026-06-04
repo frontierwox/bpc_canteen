@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Runtime
+*.pid
+*.seed
+*.pid.lock
+
+# Cache
+.cache
+.eslintcache
+.parcel-cache
+
+# Coverage
+coverage/
+
+# Misc
+.gemini/

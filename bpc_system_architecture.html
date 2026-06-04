@@ -1,0 +1,219 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', sans-serif; }
+  .root { padding: 20px; background: transparent; }
+  .title { font-size: 18px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+  .sub { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 20px; }
+
+  .tier { margin-bottom: 14px; }
+  .tier-label { font-size: 11px; font-weight: 500; letter-spacing: 0.06em; color: var(--color-text-secondary); text-transform: uppercase; margin-bottom: 8px; padding-left: 2px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 10px;
+    padding: 10px 14px;
+    flex: 1;
+    min-width: 120px;
+  }
+  .card.accent {
+    border-left: 3px solid #7B1C1C;
+  }
+  .card.gold {
+    border-left: 3px solid #D4A017;
+  }
+  .card.green {
+    border-left: 3px solid #2D7A3A;
+  }
+  .card-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 3px; }
+  .card-desc { font-size: 11px; color: var(--color-text-secondary); line-height: 1.5; }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 7px;
+    border-radius: 20px;
+    margin-top: 5px;
+    margin-right: 3px;
+  }
+  .badge-maroon { background: #FDF2F2; color: #7B1C1C; }
+  .badge-gold { background: #FFFBEB; color: #92600A; }
+  .badge-green { background: #EAF3DE; color: #3B6D11; }
+  .badge-blue { background: #E6F1FB; color: #185FA5; }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+    color: var(--color-text-secondary);
+    font-size: 11px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 0.5px;
+    background: var(--color-border-tertiary);
+  }
+
+  .flow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+  }
+  .flow-node {
+    background: var(--color-background-secondary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+  .flow-arrow {
+    color: var(--color-text-secondary);
+    font-size: 14px;
+  }
+  .flow-node.highlight {
+    background: #FDF2F2;
+    border-color: #7B1C1C;
+    color: #7B1C1C;
+    font-weight: 500;
+  }
+</style>
+
+<div class="root">
+  <p class="title">BPC Canteen Billing System — Architecture</p>
+  <p class="sub">Balaji Perfect Caters · MERN Stack · 3 Roles · Full End-to-End</p>
+
+  <div class="tier">
+    <div class="tier-label">Frontend (React 18 + Vite)</div>
+    <div class="row">
+      <div class="card accent">
+        <div class="card-title">🌐 Public Menu</div>
+        <div class="card-desc">No login · QR scan · Live prices · Mobile-first</div>
+        <span class="badge badge-green">No Auth</span>
+      </div>
+      <div class="card gold">
+        <div class="card-title">👨‍💼 Employee Dashboard</div>
+        <div class="card-desc">Create bills · Monthly entries · Print PDF</div>
+        <span class="badge badge-gold">Employee</span>
+      </div>
+      <div class="card accent">
+        <div class="card-title">👑 Admin Dashboard</div>
+        <div class="card-desc">Full CRUD · Analytics · Settings · QR Mgmt</div>
+        <span class="badge badge-maroon">Admin Only</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider">REST API · JWT · HTTPS</div>
+
+  <div class="tier">
+    <div class="tier-label">Backend (Node.js + Express.js)</div>
+    <div class="row">
+      <div class="card">
+        <div class="card-title">Auth Service</div>
+        <div class="card-desc">JWT access + refresh · bcrypt · Rate limit</div>
+        <span class="badge badge-blue">Security</span>
+      </div>
+      <div class="card">
+        <div class="card-title">Billing Engine</div>
+        <div class="card-desc">Immediate + monthly credit · Balance tracking</div>
+        <span class="badge badge-gold">Core</span>
+      </div>
+      <div class="card">
+        <div class="card-title">PDF Service</div>
+        <div class="card-desc">Puppeteer · BPC letterhead · Both formats</div>
+        <span class="badge badge-maroon">Print</span>
+      </div>
+      <div class="card">
+        <div class="card-title">Menu Service</div>
+        <div class="card-desc">CRUD · Special prices · QR generation</div>
+        <span class="badge badge-green">Mgmt</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider">Mongoose ODM · ACID-safe operations</div>
+
+  <div class="tier">
+    <div class="tier-label">Database (MongoDB)</div>
+    <div class="row">
+      <div class="card" style="flex: none; min-width: 100px;">
+        <div class="card-title">Users</div>
+        <div class="card-desc">Admin / Employee</div>
+      </div>
+      <div class="card" style="flex: none; min-width: 100px;">
+        <div class="card-title">Menu Items</div>
+        <div class="card-desc">+ Special prices</div>
+      </div>
+      <div class="card" style="flex: none; min-width: 100px;">
+        <div class="card-title">Customers</div>
+        <div class="card-desc">+ Balance</div>
+      </div>
+      <div class="card" style="flex: none; min-width: 100px;">
+        <div class="card-title">Bills</div>
+        <div class="card-desc">Immediate + Credit</div>
+      </div>
+      <div class="card" style="flex: none; min-width: 120px;">
+        <div class="card-title">Monthly Stmts</div>
+        <div class="card-desc">Running tab</div>
+      </div>
+      <div class="card" style="flex: none; min-width: 100px;">
+        <div class="card-title">Settings</div>
+        <div class="card-desc">GSTIN, Bank, etc.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider">PDF Generation Flow</div>
+
+  <div class="flow">
+    <div class="flow-node">Select Customer</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Add Menu Items</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Choose Bill Type</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node highlight">Save Bill</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node highlight">Generate PDF</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Print / Download</div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-node">Monthly Entries</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Group by Customer</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node highlight">Generate Statement</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">BPC Letterhead PDF</div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-node">Mark Paid</div>
+  </div>
+
+  <div class="tier" style="margin-top: 14px;">
+    <div class="tier-label">External Services</div>
+    <div class="row">
+      <div class="card green">
+        <div class="card-title">Cloudinary</div>
+        <div class="card-desc">Menu item images + logo storage</div>
+      </div>
+      <div class="card green">
+        <div class="card-title">QR Code Engine</div>
+        <div class="card-desc">BPC maroon QR · PNG/SVG export</div>
+      </div>
+      <div class="card green">
+        <div class="card-title">Nodemailer</div>
+        <div class="card-desc">Email invoices (optional)</div>
+      </div>
+    </div>
+  </div>
+</div>
