@@ -22,6 +22,8 @@ import settingsRoutes from './routes/settings.routes.js';
 
 const app = express();
 
+// Trust reverse proxy (Vercel) for rate limiting
+app.set('trust proxy', 1);
 // ─── Security Middleware ────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: false, // Disabled for PDF generation with inline styles
