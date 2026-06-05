@@ -245,7 +245,7 @@ const CreateBill = () => {
                     </div>
                     <div className="flex gap-3 pt-4 border-t border-[rgba(123,28,28,0.08)]">
                       <button onClick={() => setIsAddingCustomer(false)} className="flex-1 py-2.5 rounded-md border border-[rgba(123,28,28,0.15)] text-[#5A3A3A] font-medium text-sm hover:bg-surface-card transition-colors">Cancel</button>
-                      <button onClick={handleCreateCustomer} disabled={createCustomerMut.isPending} className="flex-1 btn-primary py-2.5 disabled:opacity-50 h-auto">
+                      <button onClick={handleCreateCustomer} disabled={createCustomerMut.isPending} className="flex-1 btn-primary w-full py-2.5 disabled:opacity-50 h-auto">
                         {createCustomerMut.isPending ? 'Saving...' : 'Save & Select'}
                       </button>
                     </div>

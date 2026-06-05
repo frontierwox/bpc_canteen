@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -10,8 +11,6 @@ const __dirname = dirname(__filename);
 
 /**
  * Converts the BPC logo to base64 for embedding in PDF HTML.
- * Falls back gracefully if logo file is not found.
- * @returns {Promise<string>} Base64 data URI or empty string
  */
 const getBase64Logo = async () => {
   try {
@@ -26,12 +25,6 @@ const getBase64Logo = async () => {
 
 /**
  * Main PDF generation function.
- * Generates a PDF buffer from bill/statement data.
- *
- * @param {Object} data - Bill or MonthlyStatement document (populated)
- * @param {Object} settings - Settings document
- * @param {string} type - 'monthly' for statement, 'invoice' for immediate bill
- * @returns {Promise<Buffer>} PDF file as Buffer
  */
 export const generateBillPDF = async (data, settings, type = 'monthly') => {
   const logoBase64 = await getBase64Logo();
@@ -42,10 +35,19 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
 
   let browser;
   try {
+    const isLocal = process.env.NODE_ENV === 'development';
+    
+    // Default Windows Chrome paths for local development
+    const localExecutable = process.env.CHROME_EXECUTABLE_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+
     browser = await puppeteer.launch({
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      args: isLocal ? puppeteer.defaultArgs() : chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: isLocal ? localExecutable : await chromium.executablePath(),
+      headless: isLocal ? 'new' : chromium.headless,
+      ignoreHTTPSErrors: true,
     });
+    
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const pdf = await page.pdf({

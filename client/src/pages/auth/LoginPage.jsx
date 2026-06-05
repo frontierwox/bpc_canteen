@@ -93,7 +93,7 @@ const LoginPage = () => {
               <a href="/forgot-password" className="text-xs text-[#9A7A7A] hover:text-maroon-600 font-medium transition-colors">Forgot password?</a>
             </div>
 
-            <button type="submit" disabled={isSubmitting} className="btn-primary" id="login-submit">
+            <button type="submit" disabled={isSubmitting} className="btn-primary w-full" id="login-submit">
               {isSubmitting ? <motion.div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full" animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }} /> : 'SIGN IN'}
             </button>
           </form>

@@ -163,8 +163,10 @@
   
   /* Primary CTA button as per prompt */
   .btn-primary {
-    @apply w-full h-[50px] bg-maroon-600 text-[#FFF8F8] rounded-md font-body text-sm font-medium tracking-wide
-           flex items-center justify-center gap-2 cursor-pointer transition-all duration-200 relative overflow-hidden border-none;
+    @apply h-[44px] px-5 bg-maroon-600 text-[#FFF8F8] rounded-md font-body text-sm font-medium tracking-wide
+           inline-flex items-center justify-center gap-2 cursor-pointer transition-all duration-200 relative overflow-hidden border-none
+           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon-400 focus-visible:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary:hover {
     @apply bg-maroon-700 shadow-bpc transform -translate-y-[1px];

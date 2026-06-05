@@ -123,7 +123,7 @@ const EmployeeManagement = () => {
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button onClick={() => setResetTarget(null)} className="flex-1 px-4 py-3 text-[14px] font-medium text-[#5A3A3A] bg-surface-card border border-[rgba(123,28,28,0.1)] rounded-xl hover:bg-maroon-50 transition-colors">Cancel</button>
-                  <button onClick={() => resetPwdMut.mutate({ id: resetTarget._id, data: { newPassword: newPwd } })} disabled={newPwd.length < 8 || resetPwdMut.isPending} className="flex-1 btn-primary justify-center shadow-[0_4px_16px_rgba(123,28,28,0.2)]">
+                  <button onClick={() => resetPwdMut.mutate({ id: resetTarget._id, data: { newPassword: newPwd } })} disabled={newPwd.length < 8 || resetPwdMut.isPending} className="flex-1 btn-primary w-full justify-center shadow-[0_4px_16px_rgba(123,28,28,0.2)]">
                     {resetPwdMut.isPending ? 'Resetting...' : 'Reset Password'}
                   </button>
                 </div>
@@ -203,7 +203,7 @@ const UserForm = ({ user, onClose }) => {
           
           <div className="flex gap-3 pt-4 border-t border-[rgba(123,28,28,0.08)]">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-3 text-[14px] font-medium text-[#5A3A3A] bg-surface-card border border-[rgba(123,28,28,0.1)] rounded-xl hover:bg-maroon-50 transition-colors">Cancel</button>
-            <button type="submit" disabled={loading} className="flex-1 btn-primary justify-center shadow-[0_4px_16px_rgba(123,28,28,0.2)]">
+            <button type="submit" disabled={loading} className="flex-1 btn-primary w-full justify-center shadow-[0_4px_16px_rgba(123,28,28,0.2)]">
               {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" /> : user ? 'Save Changes' : 'Create Employee'}
             </button>
           </div>

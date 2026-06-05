@@ -20,7 +20,7 @@ const MenuManagement = () => {
   const { data: cats } = useQuery({ queryKey: ['categories'], queryFn: () => categoryAPI.getAll().then((r) => r.data.data) });
 
   const toggleMut = useMutation({ mutationFn: (id) => menuAPI.toggleAvailability(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['menu'] }); toast.success('Availability toggled'); } });
-  const deleteMut = useMutation({ mutationFn: (id) => menuAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['menu'] }); setDeleteTarget(null); toast.success('Item deactivated'); } });
+  const deleteMut = useMutation({ mutationFn: (id) => menuAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['menu'] }); setDeleteTarget(null); toast.success('Item deactivated'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed to deactivate item') });
 
   const items = data?.items || [];
 
@@ -248,7 +248,7 @@ const MenuItemForm = ({ item, categories, onClose }) => {
           
           <div className="flex gap-3 pt-4 border-t border-[rgba(123,28,28,0.08)]">
             <button type="button" onClick={onClose} className="flex-1 px-4 py-3 text-[14px] font-medium text-[#5A3A3A] bg-surface-card border border-[rgba(123,28,28,0.1)] rounded-xl hover:bg-maroon-50 transition-colors">Cancel</button>
-            <button type="submit" disabled={loading} className="flex-1 btn-primary justify-center shadow-[0_4px_16px_rgba(123,28,28,0.2)]">
+            <button type="submit" disabled={loading} className="flex-1 btn-primary w-full justify-center shadow-[0_4px_16px_rgba(123,28,28,0.2)]">
               {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" /> : item ? 'Update Item' : 'Create Item'}
             </button>
           </div>
