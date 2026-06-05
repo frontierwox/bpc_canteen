@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -24,8 +25,14 @@ const getBase64Logo = async () => {
 
 /**
  * Main PDF generation function.
- * Uses the full `puppeteer` package which bundles its own Chromium binary.
- * Works identically on local dev and Vercel serverless — no environment branching needed.
+ * Uses puppeteer-core + @sparticuz/chromium for serverless compatibility.
+ *
+ * @sparticuz/chromium provides a compressed Chromium binary (~50MB) that
+ * extracts to /tmp at runtime. This keeps the function well under
+ * Vercel's 250MB unzipped size limit.
+ *
+ * For local development, set PUPPETEER_EXECUTABLE_PATH to your local
+ * Chrome/Chromium binary path (e.g., "C:/Program Files/Google/Chrome/Application/chrome.exe").
  */
 export const generateBillPDF = async (data, settings, type = 'monthly') => {
   const logoBase64 = await getBase64Logo();
@@ -36,17 +43,19 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
 
   let browser;
   try {
-    console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}`);
+    // Resolve the Chromium executable path:
+    // - On Vercel/serverless: @sparticuz/chromium extracts its binary to /tmp
+    // - On local dev: use PUPPETEER_EXECUTABLE_PATH env var if set
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
+      || await chromium.executablePath();
+
+    console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}, path: ${executablePath}`);
 
     browser = await puppeteer.launch({
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-      ],
-      headless: true,
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();
