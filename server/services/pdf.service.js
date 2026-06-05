@@ -48,18 +48,11 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
     console.log(`[PDF] Executable path: ${executablePath}`);
 
     browser = await puppeteer.launch({
-      args: isLocal
-        ? ['--no-sandbox', '--disable-setuid-sandbox']
-        : [
-            ...chromium.args,
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--single-process',
-          ],
+      args: isLocal ? puppeteer.defaultArgs() : chromium.args,
       defaultViewport: chromium.defaultViewport,
-      executablePath,
+      executablePath: isLocal 
+        ? localExecutable 
+        : await chromium.executablePath('https://github.com/Sparticuz/chromium/releases/download/v121.0.0/chromium-v121.0.0-pack.tar'),
       headless: isLocal ? 'new' : chromium.headless,
       ignoreHTTPSErrors: true,
       timeout: 30000,
