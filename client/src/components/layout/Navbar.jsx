@@ -34,12 +34,34 @@ const Navbar = () => {
         {/* Desktop Breadcrumb */}
         <div className="hidden md:flex items-center gap-2 font-body text-[13px] text-[#9A7A7A]">
           <span className="capitalize">{user?.role || 'Home'}</span>
-          {pathSegments.length > 1 && (
-            <>
-              <ChevronRight className="w-3.5 h-3.5" />
-              <span className="text-[#1A0505] font-medium capitalize">{pathSegments[pathSegments.length - 1].replace('-', ' ')}</span>
-            </>
-          )}
+          {pathSegments.slice(1).map((segment, index) => {
+            const isObjectId = /^[a-f0-9]{24}$/i.test(segment);
+            let label;
+
+            if (isObjectId) {
+              // Map parent route to a meaningful detail label
+              const parentSegment = pathSegments[index + 1 - 1] || '';
+              const detailLabels = {
+                statements: 'Statement Details',
+                bills: 'Bill Details',
+                customers: 'Customer Details',
+                employees: 'Employee Details',
+                menu: 'Item Details',
+              };
+              label = detailLabels[parentSegment] || 'Details';
+            } else {
+              label = segment.replace(/-/g, ' ');
+            }
+
+            return (
+              <span key={segment} className="flex items-center gap-2">
+                <ChevronRight className="w-3.5 h-3.5" />
+                <span className={`capitalize ${index === pathSegments.length - 2 ? 'text-[#1A0505] font-medium' : ''}`}>
+                  {label}
+                </span>
+              </span>
+            );
+          })}
         </div>
       </div>
 

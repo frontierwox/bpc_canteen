@@ -1,5 +1,4 @@
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium-min';
+import puppeteer from 'puppeteer';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -8,14 +7,6 @@ import { numberToWords as numberToWordsUtil } from '../utils/numberToWords.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-/**
- * Remote Chromium binary URL for serverless environments.
- * @sparticuz/chromium-min downloads this at runtime instead of bundling it,
- * which avoids Vercel's tree-shaking stripping the binary from the deployment.
- */
-const CHROMIUM_REMOTE_URL =
-  'https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar';
 
 /**
  * Converts the BPC logo to base64 for embedding in PDF HTML.
@@ -33,6 +24,8 @@ const getBase64Logo = async () => {
 
 /**
  * Main PDF generation function.
+ * Uses the full `puppeteer` package which bundles its own Chromium binary.
+ * Works identically on local dev and Vercel serverless — no environment branching needed.
  */
 export const generateBillPDF = async (data, settings, type = 'monthly') => {
   const logoBase64 = await getBase64Logo();
@@ -43,35 +36,18 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
 
   let browser;
   try {
-    const isLocal = process.env.NODE_ENV === 'development';
-
     console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}`);
 
-    if (isLocal) {
-      // Local development: use system-installed Chrome
-      const localChromePath =
-        process.env.CHROME_EXECUTABLE_PATH ||
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-
-      console.log(`[PDF] Local executable: ${localChromePath}`);
-
-      browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath: localChromePath,
-        headless: 'new',
-      });
-    } else {
-      // Vercel serverless: chromium-min downloads the binary from the remote URL
-      const executablePath = await chromium.executablePath(CHROMIUM_REMOTE_URL);
-      console.log(`[PDF] Serverless executable: ${executablePath}`);
-
-      browser = await puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath,
-        headless: chromium.headless,
-      });
-    }
+    browser = await puppeteer.launch({
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+      ],
+      headless: true,
+    });
 
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
