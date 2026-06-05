@@ -64,7 +64,6 @@ const App = () => {
         <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminLayout /></ProtectedRoute>}>
           <Route index element={<SuspenseWrapper><AdminDashboard /></SuspenseWrapper>} />
           <Route path="menu" element={<SuspenseWrapper><MenuManagement /></SuspenseWrapper>} />
-          <Route path="categories" element={<SuspenseWrapper><MenuManagement /></SuspenseWrapper>} />
           <Route path="customers" element={<SuspenseWrapper><CustomerManagement /></SuspenseWrapper>} />
           <Route path="employees" element={<SuspenseWrapper><EmployeeManagement /></SuspenseWrapper>} />
           <Route path="bills" element={<SuspenseWrapper><AllBills /></SuspenseWrapper>} />

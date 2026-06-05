@@ -20,7 +20,7 @@ const MenuManagement = () => {
   const { data: cats } = useQuery({ queryKey: ['categories'], queryFn: () => categoryAPI.getAll().then((r) => r.data.data) });
 
   const toggleMut = useMutation({ mutationFn: (id) => menuAPI.toggleAvailability(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['menu'] }); toast.success('Availability toggled'); } });
-  const deleteMut = useMutation({ mutationFn: (id) => menuAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['menu'] }); setDeleteTarget(null); toast.success('Item deactivated'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed to deactivate item') });
+  const deleteMut = useMutation({ mutationFn: (id) => menuAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['menu'] }); setDeleteTarget(null); toast.success('Item deleted'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed to delete item') });
 
   const items = data?.items || [];
 
@@ -121,7 +121,7 @@ const MenuManagement = () => {
         </div>
       )}
 
-      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => deleteMut.mutate(deleteTarget._id)} title="Deactivate Item" message={`Are you sure you want to deactivate "${deleteTarget?.name}"?`} confirmText="Deactivate" loading={deleteMut.isPending} />
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => deleteMut.mutate(deleteTarget._id)} title="Delete Item" message={`Are you sure you want to completely delete "${deleteTarget?.name}"? This action cannot be undone.`} confirmText="Delete" loading={deleteMut.isPending} />
 
       <AnimatePresence>
         {showForm && <MenuItemForm item={editing} categories={cats} onClose={() => { setShowForm(false); setEditing(null); }} />}

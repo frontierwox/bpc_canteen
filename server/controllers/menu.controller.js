@@ -275,7 +275,7 @@ export const updateMenuItem = asyncHandler(async (req, res) => {
 
 /**
  * DELETE /api/v1/menu/:id
- * Soft-deletes a menu item by setting isAvailable to false.
+ * Hard-deletes a menu item from database and Cloudinary.
  */
 export const deleteMenuItem = asyncHandler(async (req, res) => {
   const item = await MenuItem.findById(req.params.id);
@@ -283,10 +283,17 @@ export const deleteMenuItem = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Menu item not found');
   }
 
-  item.isAvailable = false;
-  await item.save();
+  if (item.image?.publicId) {
+    try {
+      await cloudinary.uploader.destroy(item.image.publicId);
+    } catch (error) {
+      console.error('Cloudinary delete error:', error);
+    }
+  }
 
-  res.status(200).json(new ApiResponse(200, null, 'Menu item deactivated successfully'));
+  await item.deleteOne();
+
+  res.status(200).json(new ApiResponse(200, null, 'Menu item deleted successfully'));
 });
 
 /**
