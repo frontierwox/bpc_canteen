@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
+import chromium from '@sparticuz/chromium-min';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -44,10 +44,12 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
   let browser;
   try {
     // Resolve the Chromium executable path:
-    // - On Vercel/serverless: @sparticuz/chromium extracts its binary to /tmp
+    // - On Vercel/serverless: @sparticuz/chromium-min fetches binary from github
     // - On local dev: use PUPPETEER_EXECUTABLE_PATH env var if set
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
-      || await chromium.executablePath();
+    const isLocal = !!process.env.PUPPETEER_EXECUTABLE_PATH;
+    const executablePath = isLocal 
+      ? process.env.PUPPETEER_EXECUTABLE_PATH
+      : await chromium.executablePath('https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar');
 
     console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}, path: ${executablePath}`);
 
