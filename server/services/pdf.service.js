@@ -1,5 +1,4 @@
 import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium-min';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -43,13 +42,17 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
 
   let browser;
   try {
+    // Vercel Node 20+ runs on Amazon Linux 2023 which lacks libnss3.so.
+    // Sparticuz natively provides these missing libraries, but fails to detect Vercel's environment.
+    // We force AL2023 detection BEFORE importing the module so it extracts and loads the libraries.
+    process.env.AWS_LAMBDA_JS_RUNTIME = 'nodejs20.x';
+    const { default: chromium } = await import('@sparticuz/chromium');
+
     // Resolve the Chromium executable path:
-    // - On Vercel/serverless: @sparticuz/chromium-min fetches binary from github
+    // - On Vercel/serverless: @sparticuz/chromium extracts its binary to /tmp
     // - On local dev: use PUPPETEER_EXECUTABLE_PATH env var if set
-    const isLocal = !!process.env.PUPPETEER_EXECUTABLE_PATH;
-    const executablePath = isLocal 
-      ? process.env.PUPPETEER_EXECUTABLE_PATH
-      : await chromium.executablePath('https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar');
+    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
+      || await chromium.executablePath();
 
     console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}, path: ${executablePath}`);
 
