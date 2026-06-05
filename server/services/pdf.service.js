@@ -18,7 +18,7 @@ const getBase64Logo = async () => {
     const logoBuffer = await readFile(logoPath);
     return `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
   } catch (error) {
-    console.warn('Logo file not found, using text fallback');
+    console.warn('Logo file not found, using text fallback:', error.message);
     return '';
   }
 };
@@ -36,28 +36,53 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
   let browser;
   try {
     const isLocal = process.env.NODE_ENV === 'development';
-    
+
     // Default Windows Chrome paths for local development
-    const localExecutable = process.env.CHROME_EXECUTABLE_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    const localExecutable =
+      process.env.CHROME_EXECUTABLE_PATH ||
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+
+    console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}`);
+
+    const executablePath = isLocal ? localExecutable : await chromium.executablePath();
+    console.log(`[PDF] Executable path: ${executablePath}`);
 
     browser = await puppeteer.launch({
-      args: isLocal ? puppeteer.defaultArgs() : chromium.args,
+      args: isLocal
+        ? ['--no-sandbox', '--disable-setuid-sandbox']
+        : [
+            ...chromium.args,
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+          ],
       defaultViewport: chromium.defaultViewport,
-      executablePath: isLocal ? localExecutable : await chromium.executablePath(),
+      executablePath,
       headless: isLocal ? 'new' : chromium.headless,
       ignoreHTTPSErrors: true,
+      timeout: 30000,
     });
-    
+
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
+
     const pdf = await page.pdf({
       format: 'A4',
       printBackground: true,
       margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
     });
+
+    console.log(`[PDF] Generated successfully — size: ${pdf.length} bytes`);
     return Buffer.from(pdf);
+  } catch (err) {
+    console.error('[PDF] Generation failed:', err);
+    throw err;
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      await browser.close().catch((e) => console.warn('[PDF] Browser close error:', e.message));
+    }
   }
 };
 
@@ -83,14 +108,12 @@ const generateMonthlyStatementHTML = (data, settings, logoBase64) => {
   const statementNo = data.statementNumber || data.billNumber || '';
   const statementDate = `For ${monthName} ${year}`;
   const totalBilled = data.closingBalance || data.totalAmount || 0;
-  
-  // Convert amount to words
+
   const words = numberToWordsUtil(totalBilled);
   const amountInWords = `${words} Rupees`;
 
   const formattedTransactions = [];
 
-  // Add opening balance if present
   if (data.openingBalance && data.openingBalance > 0) {
     formattedTransactions.push({
       date: '',
@@ -99,7 +122,6 @@ const generateMonthlyStatementHTML = (data, settings, logoBase64) => {
     });
   }
 
-  // Add actual transactions
   for (const t of transactions) {
     formattedTransactions.push({
       date: formatDate(t.date),
@@ -108,7 +130,6 @@ const generateMonthlyStatementHTML = (data, settings, logoBase64) => {
     });
   }
 
-  // If it's a regular bill (not a statement with transactions)
   if (transactions.length === 0 && data.items) {
     for (const item of data.items) {
       formattedTransactions.push({
@@ -143,7 +164,6 @@ const generateMonthlyStatementHTML = (data, settings, logoBase64) => {
 
 /**
  * Generates the Invoice / Bill of Supply HTML using the pixel-perfect template.
- * Maps existing bill data fields to the template's expected format.
  */
 const generateInvoiceHTML = (data, settings, logoBase64) => {
   const customer = data.customer || {};
@@ -158,7 +178,6 @@ const generateInvoiceHTML = (data, settings, logoBase64) => {
     return `${day}/${month}/${year}`;
   };
 
-  // Map bill items to template format
   const templateItems = items.map((item) => ({
     name: item.name,
     qty: item.quantity,
@@ -169,14 +188,11 @@ const generateInvoiceHTML = (data, settings, logoBase64) => {
   const subtotalQty = items.reduce((sum, item) => sum + item.quantity, 0);
   const subtotalAmount = data.totalAmount || items.reduce((sum, item) => sum + item.totalPrice, 0);
 
-  // Amount in words
   const words = numberToWordsUtil(subtotalAmount);
   const amountInWords = `${words} Rupees`;
 
-  // Received/paid amount — pull from database, default to 0
   const receivedAmount = data.paidAmount || 0;
 
-  // Bank details from settings
   const bankDetails = {
     vendorName: settings.bankDetails?.vendorName || 'Balaji S',
     ifscCode: settings.bankDetails?.ifscCode || 'SIBL0000082',
@@ -189,7 +205,7 @@ const generateInvoiceHTML = (data, settings, logoBase64) => {
     invoiceNo: data.billNumber || '',
     invoiceDate: formatDate(data.billDate),
     billTo: customer.name || '',
-    shipTo: customer.name || '', // Ship To = Bill To
+    shipTo: customer.name || '',
     placeOfSupply: 'Tamil Nadu',
     items: templateItems,
     subtotalQty,
