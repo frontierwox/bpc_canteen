@@ -1,5 +1,5 @@
 import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
+import chromium from '@sparticuz/chromium-min';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -8,6 +8,14 @@ import { numberToWords as numberToWordsUtil } from '../utils/numberToWords.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Remote Chromium binary URL for serverless environments.
+ * @sparticuz/chromium-min downloads this at runtime instead of bundling it,
+ * which avoids Vercel's tree-shaking stripping the binary from the deployment.
+ */
+const CHROMIUM_REMOTE_URL =
+  'https://github.com/Sparticuz/chromium/releases/download/v131.0.1/chromium-v131.0.1-pack.tar';
 
 /**
  * Converts the BPC logo to base64 for embedding in PDF HTML.
@@ -53,8 +61,8 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
         headless: 'new',
       });
     } else {
-      // Vercel serverless: use @sparticuz/chromium (handles binary automatically)
-      const executablePath = await chromium.executablePath();
+      // Vercel serverless: chromium-min downloads the binary from the remote URL
+      const executablePath = await chromium.executablePath(CHROMIUM_REMOTE_URL);
       console.log(`[PDF] Serverless executable: ${executablePath}`);
 
       browser = await puppeteer.launch({
