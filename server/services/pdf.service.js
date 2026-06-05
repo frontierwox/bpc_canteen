@@ -37,26 +37,33 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
   try {
     const isLocal = process.env.NODE_ENV === 'development';
 
-    // Default Windows Chrome paths for local development
-    const localExecutable =
-      process.env.CHROME_EXECUTABLE_PATH ||
-      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-
     console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}`);
 
-    const executablePath = isLocal ? localExecutable : await chromium.executablePath();
-    console.log(`[PDF] Executable path: ${executablePath}`);
+    if (isLocal) {
+      // Local development: use system-installed Chrome
+      const localChromePath =
+        process.env.CHROME_EXECUTABLE_PATH ||
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
-    browser = await puppeteer.launch({
-      args: isLocal ? puppeteer.defaultArgs() : chromium.args,
-      defaultViewport: chromium.defaultViewport,
-      executablePath: isLocal 
-        ? localExecutable 
-        : await chromium.executablePath('https://github.com/Sparticuz/chromium/releases/download/v121.0.0/chromium-v121.0.0-pack.tar'),
-      headless: isLocal ? 'new' : chromium.headless,
-      ignoreHTTPSErrors: true,
-      timeout: 30000,
-    });
+      console.log(`[PDF] Local executable: ${localChromePath}`);
+
+      browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: localChromePath,
+        headless: 'new',
+      });
+    } else {
+      // Vercel serverless: use @sparticuz/chromium (handles binary automatically)
+      const executablePath = await chromium.executablePath();
+      console.log(`[PDF] Serverless executable: ${executablePath}`);
+
+      browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath,
+        headless: chromium.headless,
+      });
+    }
 
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
