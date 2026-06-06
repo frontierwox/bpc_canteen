@@ -152,6 +152,7 @@ const monthlyStatementSchema = new mongoose.Schema(
     generatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     sentAt:  { type: Date },
     paidAt:  { type: Date },
+    paymentReference: { type: String, trim: true },
 
     notes:          { type: String, trim: true, maxlength: 1000 },
     amountInWords:  { type: String, trim: true },

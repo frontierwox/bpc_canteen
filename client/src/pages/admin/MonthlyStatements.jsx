@@ -38,6 +38,7 @@ const MonthlyStatements = () => {
   const queryClient = useQueryClient();
   const navigate    = useNavigate();
   const [showGenerate, setShowGenerate] = useState(false);
+  const [paymentTarget, setPaymentTarget] = useState(null);
   const [search,  setSearch]  = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterMonth,  setFilterMonth]  = useState('');
@@ -81,6 +82,7 @@ const MonthlyStatements = () => {
     mutationFn: ({ id, payload }) => statementAPI.markPaid(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['statements'] });
+      setPaymentTarget(null);
       toast.success('Payment recorded');
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
@@ -219,9 +221,9 @@ const MonthlyStatements = () => {
                   <FileDown className="w-3.5 h-3.5" /> PDF
                 </button>
                 {stmt.status !== 'paid' && (
-                  <button onClick={(e) => { e.stopPropagation(); markPaidMut.mutate({ id: stmt._id, payload: { amount: stmt.closingBalance } }); }}
+                  <button onClick={(e) => { e.stopPropagation(); setPaymentTarget(stmt); }}
                     className="flex-1 flex items-center justify-center gap-1.5 text-[12px] py-2 font-medium text-success-text bg-success-bg rounded-lg hover:bg-success-bg/80 transition-colors border border-success-border/30">
-                    <CheckCircle className="w-3.5 h-3.5" /> Paid
+                    <CheckCircle className="w-3.5 h-3.5" /> Record Payment
                   </button>
                 )}
               </div>
@@ -248,6 +250,18 @@ const MonthlyStatements = () => {
       {/* Generate Modal */}
       <AnimatePresence>
         {showGenerate && <GenerateStatementModal onClose={() => setShowGenerate(false)} />}
+      </AnimatePresence>
+
+      {/* Record Payment Modal */}
+      <AnimatePresence>
+        {paymentTarget && (
+          <RecordPaymentModal 
+            statement={paymentTarget} 
+            onClose={() => setPaymentTarget(null)} 
+            onConfirm={(payload) => markPaidMut.mutate({ id: paymentTarget._id, payload })}
+            loading={markPaidMut.isPending}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
@@ -359,6 +373,73 @@ const GenerateStatementModal = ({ onClose }) => {
               {loading
                 ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" />
                 : (forceRegen ? 'Regenerate Now' : 'Generate Now')}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Record Payment Modal
+// ─────────────────────────────────────────────────────────────────────────────
+const RecordPaymentModal = ({ statement, onClose, onConfirm, loading }) => {
+  const [amount, setAmount] = useState(statement.closingBalance);
+  const [reference, setReference] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!reference.trim()) return toast.error("Payment reference is required.");
+    onConfirm({ amount, paymentReference: reference });
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[#1A0505]/60 backdrop-blur-sm" onClick={onClose} />
+      <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 20 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+        className="relative z-10 bg-surface-page rounded-2xl shadow-2xl w-full max-w-sm border border-[rgba(123,28,28,0.1)] overflow-hidden">
+
+        <div className="px-6 py-5 border-b border-[rgba(123,28,28,0.08)] bg-success-bg/40 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-white text-[#4CAF50] flex items-center justify-center shadow-sm">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="font-display font-bold text-xl text-[#1A0505]">Record Payment</h2>
+              <p className="text-[12px] text-[#9A7A7A] mt-0.5">Stmt: {statement.statementNumber}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 bg-white rounded-full text-[#4CAF50] hover:bg-success-bg transition-colors shadow-sm">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-surface-page">
+          <div>
+            <label className="form-label text-[#4CAF50] font-semibold">Payment Amount (₹) *</label>
+            <input type="number" step="0.01" max={statement.closingBalance} min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)}
+              className="form-input font-mono bg-success-bg/30 border-[#4CAF50]/30 focus:border-[#4CAF50] focus:ring-[#4CAF50]" required />
+            <p className="text-[11px] text-[#9A7A7A] mt-1.5">Max balance due: {formatINR(statement.closingBalance)}</p>
+          </div>
+
+          <div>
+            <label className="form-label">Payment Reference / Note *</label>
+            <input type="text" value={reference} onChange={(e) => setReference(e.target.value)}
+              placeholder="e.g. UPI Ref, Cheque No, Cash" className="form-input" required />
+            <p className="text-[11px] text-maroon-500 mt-1.5 italic">* Compulsory for audit purposes</p>
+          </div>
+
+          <div className="flex gap-3 pt-4 border-t border-[rgba(123,28,28,0.08)]">
+            <button type="button" onClick={onClose}
+              className="flex-1 px-4 py-3 text-[14px] font-medium text-[#5A3A3A] bg-surface-card border border-[rgba(123,28,28,0.1)] rounded-xl hover:bg-maroon-50 transition-colors">
+              Cancel
+            </button>
+            <button type="submit" disabled={loading}
+              className="flex-1 w-full justify-center shadow-[0_4px_16px_rgba(76,175,80,0.25)] bg-[#4CAF50] text-white py-3 rounded-xl hover:bg-[#43A047] font-medium transition-all flex items-center">
+              {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto" /> : 'Confirm Payment'}
             </button>
           </div>
         </form>

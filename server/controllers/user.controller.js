@@ -133,23 +133,19 @@ export const updateUser = asyncHandler(async (req, res) => {
 
 /**
  * DELETE /api/v1/users/:id
- * Soft-deactivates a user (admin only). Doesn't actually delete the document.
+ * Permanently deletes a user (admin only).
  */
 export const deleteUser = asyncHandler(async (req, res) => {
   if (req.user._id.toString() === req.params.id) {
     throw new ApiError(400, 'You cannot delete your own account.');
   }
 
-  const user = await User.findById(req.params.id);
+  const user = await User.findByIdAndDelete(req.params.id);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
 
-  user.isActive = false;
-  user.refreshToken = '';
-  await user.save({ validateBeforeSave: false });
-
-  res.status(200).json(new ApiResponse(200, null, 'User deactivated successfully'));
+  res.status(200).json(new ApiResponse(200, null, 'User deleted successfully'));
 });
 
 /**

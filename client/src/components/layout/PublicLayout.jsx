@@ -92,8 +92,8 @@ const PublicNavbar = () => {
 
 /* ── Footer ──────────────────────────────────────────────── */
 const PublicFooter = () => (
-  <footer className="mt-16 border-t border-[rgba(123,28,28,0.08)] bg-[rgba(253,250,245,0.9)] pb-safe">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+  <footer className="mt-16 border-t border-[rgba(123,28,28,0.08)] bg-[rgba(253,250,245,0.9)] pb-safe relative flex flex-col">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left w-full">
       <div className="flex items-center gap-2.5">
         <img src="/logo.jpeg" alt="BPC" className="w-7 h-7 rounded-full object-cover opacity-80 border border-[rgba(123,28,28,0.15)]" />
         <div>
@@ -106,6 +106,25 @@ const PublicFooter = () => (
         <br className="hidden sm:inline" /> Every meal crafted with care.
       </p>
       <p className="text-[11px] text-[#C0A080]">© {new Date().getFullYear()} BPC Canteen</p>
+    </div>
+
+    {/* Frontier Wox Logo at the bottom perfectly */}
+    <div className="border-t border-[rgba(123,28,28,0.06)] bg-[#FDFAF5]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-center items-center">
+        <a 
+          href="https://frontierwox.in/" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="group flex items-center gap-2 sm:gap-2.5 opacity-80 hover:opacity-100 transition-all duration-300"
+        >
+          <span className="text-[10px] tracking-widest text-[#9A7A7A] uppercase font-medium group-hover:text-maroon-700 transition-colors">Powered By</span>
+          <img 
+            src="/companylogo.png" 
+            alt="Frontier Wox" 
+            className="h-5 sm:h-6 w-auto object-contain transition-all duration-300 transform group-hover:scale-105" 
+          />
+        </a>
+      </div>
     </div>
   </footer>
 );

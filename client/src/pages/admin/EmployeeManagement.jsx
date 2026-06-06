@@ -17,7 +17,7 @@ const EmployeeManagement = () => {
   const [newPwd, setNewPwd] = useState('');
 
   const { data, isLoading } = useQuery({ queryKey: ['users', { search }], queryFn: () => userAPI.getAll({ search }).then((r) => r.data.data) });
-  const deleteMut = useMutation({ mutationFn: (id) => userAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setDeleteTarget(null); toast.success('User deactivated'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed') });
+  const deleteMut = useMutation({ mutationFn: (id) => userAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['users'] }); setDeleteTarget(null); toast.success('User deleted successfully'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed') });
   const resetPwdMut = useMutation({ mutationFn: ({ id, data }) => userAPI.resetPassword(id, data), onSuccess: () => { setResetTarget(null); setNewPwd(''); toast.success('Password reset successfully!'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed') });
 
   const users = data?.users || [];
@@ -102,7 +102,7 @@ const EmployeeManagement = () => {
         </div>
       )}
 
-      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => deleteMut.mutate(deleteTarget._id)} title="Deactivate Employee" message={`Are you sure you want to deactivate "${deleteTarget?.name}"? They will no longer be able to log in.`} confirmText="Deactivate" loading={deleteMut.isPending} />
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => deleteMut.mutate(deleteTarget._id)} title="Delete Employee" message={`Are you sure you want to completely delete "${deleteTarget?.name}"? This action cannot be undone.`} confirmText="Delete" loading={deleteMut.isPending} />
 
       <AnimatePresence>
         {resetTarget && (

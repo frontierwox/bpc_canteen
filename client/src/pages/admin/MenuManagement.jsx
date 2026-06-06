@@ -90,7 +90,7 @@ const MenuManagement = () => {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-lg font-bold text-maroon-700">{formatINR(item.effectivePrice || item.basePrice)}</span>
-                      {item.hasSpecialPrice && <span className="text-[12px] text-[#9A7A7A] line-through">{formatINR(item.basePrice)}</span>}
+                      {item.specialPrice?.isActive && item.specialPrice?.price != null && item.effectivePrice !== item.basePrice && <span className="text-[12px] text-[#9A7A7A] line-through">{formatINR(item.basePrice)}</span>}
                     </div>
                   </div>
                   <span className="text-[10px] font-medium text-[#9A7A7A] uppercase tracking-wider bg-maroon-50 px-2 py-1 rounded">{item.unit}</span>
@@ -134,11 +134,20 @@ const MenuManagement = () => {
 const MenuItemForm = ({ item, categories, onClose }) => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
+  const toLocalISOString = (dateStr) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  };
+
   const [formData, setFormData] = useState({
     name: item?.name || '', description: item?.description || '', category: item?.category?._id || item?.category || '',
     basePrice: item?.basePrice || '', unit: item?.unit || 'NOS', isVeg: item?.isVeg ?? true, isCombo: item?.isCombo ?? false, sortOrder: item?.sortOrder || 0, tags: item?.tags?.join(', ') || '',
     specialPriceActive: item?.specialPrice?.isActive ?? false,
     specialPriceAmount: item?.specialPrice?.price || '',
+    validFrom: toLocalISOString(item?.specialPrice?.validFrom),
+    validUntil: toLocalISOString(item?.specialPrice?.validUntil),
   });
   const [imageFile, setImageFile] = useState(null);
 
@@ -148,11 +157,16 @@ const MenuItemForm = ({ item, categories, onClose }) => {
     try {
       const fd = new FormData();
       Object.entries(formData).forEach(([k, v]) => {
-        if (k !== 'specialPriceActive' && k !== 'specialPriceAmount') {
+        if (k !== 'specialPriceActive' && k !== 'specialPriceAmount' && k !== 'validFrom' && k !== 'validUntil') {
           fd.append(k, v);
         }
       });
-      fd.append('specialPrice', JSON.stringify({ isActive: formData.specialPriceActive, price: formData.specialPriceAmount }));
+      fd.append('specialPrice', JSON.stringify({ 
+        isActive: formData.specialPriceActive, 
+        price: formData.specialPriceAmount,
+        validFrom: formData.validFrom ? new Date(formData.validFrom).toISOString() : null,
+        validUntil: formData.validUntil ? new Date(formData.validUntil).toISOString() : null
+      }));
       if (imageFile) fd.append('image', imageFile);
 
       if (item) {
@@ -227,9 +241,21 @@ const MenuItemForm = ({ item, categories, onClose }) => {
 
           <AnimatePresence>
             {formData.specialPriceActive && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
-                <label className="form-label">Special Price (₹) *</label>
-                <input type="number" step="0.01" min="0" value={formData.specialPriceAmount} onChange={(e) => setFormData({ ...formData, specialPriceAmount: e.target.value })} className="form-input font-mono" required={formData.specialPriceActive} />
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-4">
+                <div>
+                  <label className="form-label">Special Price (₹) *</label>
+                  <input type="number" step="0.01" min="0" value={formData.specialPriceAmount} onChange={(e) => setFormData({ ...formData, specialPriceAmount: e.target.value })} className="form-input font-mono" required={formData.specialPriceActive} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="form-label">Valid From (Optional)</label>
+                    <input type="datetime-local" value={formData.validFrom} onChange={(e) => setFormData({ ...formData, validFrom: e.target.value })} className="form-input" />
+                  </div>
+                  <div>
+                    <label className="form-label">Valid Until (Optional)</label>
+                    <input type="datetime-local" value={formData.validUntil} onChange={(e) => setFormData({ ...formData, validUntil: e.target.value })} className="form-input" />
+                  </div>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>

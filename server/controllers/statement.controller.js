@@ -202,7 +202,11 @@ export const regenerateStatement = asyncHandler(async (req, res) => {
 // Recalculates closingBalance correctly.
 // ─────────────────────────────────────────────────────────────────────────────
 export const markStatementPaid = asyncHandler(async (req, res) => {
-  const { amount } = req.body;
+  const { amount, paymentReference } = req.body;
+
+  if (!paymentReference || !paymentReference.trim()) {
+    throw new ApiError(400, 'Payment reference or note is compulsory.');
+  }
 
   const statement = await MonthlyStatement.findById(req.params.id);
   if (!statement) {
@@ -232,6 +236,8 @@ export const markStatementPaid = asyncHandler(async (req, res) => {
   statement.closingBalance = roundTo2(
     safeSum(statement.openingBalance, statement.totalBilled, -statement.totalPaid)
   );
+
+  statement.paymentReference = paymentReference.trim();
 
   if (statement.closingBalance <= 0) {
     statement.closingBalance = 0;
