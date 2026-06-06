@@ -184,9 +184,12 @@ const CustomerStatement = () => {
   const regenerateMut = useMutation({
     mutationFn: () => statementAPI.regenerate(id),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['statement', id] });
       queryClient.invalidateQueries({ queryKey: ['statements'] });
       toast.success(`Regenerated: ${res.data.data?.statementNumber || ''}`, { icon: '🔄' });
+      // Redirect to the newly generated statement ID
+      if (res.data.data?._id) {
+        navigate(`/admin/statements/${res.data.data._id}`, { replace: true });
+      }
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Regeneration failed'),
   });

@@ -47,8 +47,25 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
     process.env.AWS_LAMBDA_JS_RUNTIME = 'nodejs20.x';
     const { default: chromium } = await import('@sparticuz/chromium');
 
-    const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
-      || await chromium.executablePath();
+    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+
+    if (!executablePath && process.env.NODE_ENV === 'development') {
+      const fs = await import('fs');
+      const localPaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
+      ];
+      for (const p of localPaths) {
+        if (fs.existsSync(p)) {
+          executablePath = p;
+          break;
+        }
+      }
+    }
+
+    if (!executablePath) {
+      executablePath = await chromium.executablePath();
+    }
 
     console.log(`[PDF] Launching — env:${process.env.NODE_ENV} path:${executablePath}`);
 
@@ -121,14 +138,30 @@ const buildMonthlyStatementPDFHTML = (data, settings, logoBase64) => {
     });
   }
 
-  // One row per bill/transaction
-  for (const t of transactions) {
-    formattedTransactions.push({
-      date:        formatDate(t.date),
-      particulars: t.particulars || '-',
-      billRef:     t.billNumber,
-      amount:      t.amount,
-    });
+  // One row per date (grouped by day) if dailySummary exists, else fallback to transactions
+  if (data.dailySummary && data.dailySummary.length > 0) {
+    for (const day of data.dailySummary) {
+      const allParticulars = day.orders
+        .map(o => o.particulars)
+        .filter(p => p && p !== '-')
+        .join(' ');
+        
+      formattedTransactions.push({
+        date:        day.displayDate || formatDate(day.date),
+        particulars: allParticulars || '-',
+        billRef:     day.orders.length > 1 ? `${day.orderCount} orders` : (day.orders[0]?.billNumber || ''),
+        amount:      day.dayTotal,
+      });
+    }
+  } else {
+    for (const t of transactions) {
+      formattedTransactions.push({
+        date:        formatDate(t.date),
+        particulars: t.particulars || '-',
+        billRef:     t.billNumber,
+        amount:      t.amount,
+      });
+    }
   }
 
   // ── FIX: Use data.totalBilled — NOT data.closingBalance ──────────────────

@@ -43,8 +43,8 @@ const LoginPage = () => {
         <div className="absolute inset-0 bg-diagonal-gold pointer-events-none" />
         
         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="relative z-10 flex flex-col items-center">
-          <div className="w-[90px] h-[90px] rounded-full border-2 border-[rgba(212,160,23,0.5)] shadow-[0_0_40px_rgba(212,160,23,0.15)] flex items-center justify-center bg-maroon-800 mb-7">
-            <span className="text-gold-400 font-display text-[40px] font-bold">B</span>
+          <div className="w-[100px] h-[100px] rounded-full border-[3px] border-[rgba(212,160,23,0.5)] shadow-[0_0_40px_rgba(212,160,23,0.25)] flex items-center justify-center bg-maroon-800 mb-7 overflow-hidden">
+            <img src="/logo.jpeg" alt="Balaji Perfect Caters" className="w-full h-full object-cover" />
           </div>
           
           <h1 className="font-display text-[44px] font-bold text-[#FFF8F8] text-center tracking-[0.03em] leading-[1.1]">
