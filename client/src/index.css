@@ -151,6 +151,22 @@
   }
 }
 
+@layer utilities {
+  /* Hide scrollbar but keep scrollability */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Safe-area bottom padding for notched phones */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 @layer components {
   /* Legacy/Existing button styles modified slightly to fit new tokens */
   .btn-bpc {

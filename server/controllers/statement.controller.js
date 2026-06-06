@@ -6,27 +6,33 @@ import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { generateMonthlyStatement } from '../services/billing.service.js';
 import { generateBillPDF } from '../services/pdf.service.js';
+import { roundTo2, safeSum } from '../utils/dateHelpers.js';
 
-/**
- * GET /api/v1/statements
- * Returns all monthly statements with filters.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/statements
+// Returns paginated statements with optional filters.
+// ─────────────────────────────────────────────────────────────────────────────
 export const getAllStatements = asyncHandler(async (req, res) => {
-  const { customer, month, year, status, page = 1, limit = 20 } = req.query;
+  const {
+    customer, month, year, status,
+    page = 1, limit = 20,
+    sortBy = 'year', order = 'desc',
+  } = req.query;
 
   const filter = {};
   if (customer) filter.customer = customer;
-  if (month) filter.month = Number(month);
-  if (year) filter.year = Number(year);
-  if (status) filter.status = status;
+  if (month)    filter.month    = Number(month);
+  if (year)     filter.year     = Number(year);
+  if (status)   filter.status   = status;
 
   const skip = (Number(page) - 1) * Number(limit);
+  const sortOrder = order === 'asc' ? 1 : -1;
 
   const [statements, total] = await Promise.all([
     MonthlyStatement.find(filter)
-      .populate('customer', 'name organization department')
+      .populate('customer', 'name organization department phone email')
       .populate('generatedBy', 'name')
-      .sort({ year: -1, month: -1 })
+      .sort({ year: sortOrder, month: sortOrder })
       .skip(skip)
       .limit(Number(limit))
       .lean(),
@@ -36,15 +42,20 @@ export const getAllStatements = asyncHandler(async (req, res) => {
   res.status(200).json(
     new ApiResponse(200, {
       statements,
-      pagination: { total, page: Number(page), limit: Number(limit), pages: Math.ceil(total / Number(limit)) },
+      pagination: {
+        total,
+        page:  Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / Number(limit)),
+      },
     }, 'Statements fetched successfully')
   );
 });
 
-/**
- * GET /api/v1/statements/:id
- * Returns a single statement with full details.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/statements/:id
+// Returns a single statement with full transactions + daily summary.
+// ─────────────────────────────────────────────────────────────────────────────
 export const getStatementById = asyncHandler(async (req, res) => {
   const statement = await MonthlyStatement.findById(req.params.id)
     .populate('customer', 'name organization department phone email address')
@@ -59,10 +70,10 @@ export const getStatementById = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, statement, 'Statement fetched successfully'));
 });
 
-/**
- * GET /api/v1/statements/:id/pdf
- * Generates and downloads the monthly statement as a PDF.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/statements/:id/pdf
+// Generates PDF — totals guaranteed to match dashboard.
+// ─────────────────────────────────────────────────────────────────────────────
 export const getStatementPDF = asyncHandler(async (req, res) => {
   const statement = await MonthlyStatement.findById(req.params.id)
     .populate('customer', 'name organization department phone email address')
@@ -85,10 +96,10 @@ export const getStatementPDF = asyncHandler(async (req, res) => {
   res.send(pdfBuffer);
 });
 
-/**
- * GET /api/v1/statements/customer/:customerId
- * Returns all statements for a specific customer.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/statements/customer/:customerId
+// All statements for a specific customer, newest first.
+// ─────────────────────────────────────────────────────────────────────────────
 export const getCustomerStatements = asyncHandler(async (req, res) => {
   const customer = await Customer.findById(req.params.customerId);
   if (!customer) {
@@ -100,33 +111,23 @@ export const getCustomerStatements = asyncHandler(async (req, res) => {
     .sort({ year: -1, month: -1 })
     .lean();
 
-  res.status(200).json(new ApiResponse(200, { customer, statements }, 'Customer statements fetched successfully'));
+  res.status(200).json(
+    new ApiResponse(200, { customer, statements }, 'Customer statements fetched successfully')
+  );
 });
 
-/**
- * POST /api/v1/statements/generate
- * Generates a monthly statement for a customer for a specific month/year.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/statements/generate
+// Generates a new statement. Supports forceRegenerate to overwrite existing.
+// ─────────────────────────────────────────────────────────────────────────────
 export const generateStatement = asyncHandler(async (req, res) => {
-  const { customerId, month, year } = req.body;
+  const { customerId, month, year, forceRegenerate = false } = req.body;
 
   if (!customerId || !month || !year) {
     throw new ApiError(400, 'Customer ID, month, and year are required.');
   }
-
   if (month < 1 || month > 12) {
     throw new ApiError(400, 'Month must be between 1 and 12.');
-  }
-
-  // Check if statement already exists
-  const existing = await MonthlyStatement.findOne({
-    customer: customerId,
-    month: Number(month),
-    year: Number(year),
-  });
-
-  if (existing) {
-    throw new ApiError(409, `Statement already exists for this customer for ${month}/${year}. Statement: ${existing.statementNumber}`);
   }
 
   const customer = await Customer.findById(customerId);
@@ -134,73 +135,190 @@ export const generateStatement = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Customer not found');
   }
 
+  // If statement already exists and forceRegenerate is false, return 409
+  if (!forceRegenerate) {
+    const existing = await MonthlyStatement.findOne({
+      customer: customerId,
+      month:    Number(month),
+      year:     Number(year),
+    });
+    if (existing) {
+      throw new ApiError(
+        409,
+        `Statement already exists for ${month}/${year}: ${existing.statementNumber}. Send forceRegenerate=true to overwrite.`
+      );
+    }
+  }
+
   const statement = await generateMonthlyStatement(
     customerId,
     Number(month),
     Number(year),
-    req.user._id
+    req.user._id,
+    Boolean(forceRegenerate)
   );
 
   const populatedStatement = await MonthlyStatement.findById(statement._id)
-    .populate('customer', 'name organization department')
-    .populate('generatedBy', 'name');
+    .populate('customer', 'name organization department phone email')
+    .populate('generatedBy', 'name')
+    .lean();
 
-  res.status(201).json(new ApiResponse(201, populatedStatement, 'Monthly statement generated successfully'));
+  res.status(201).json(
+    new ApiResponse(201, populatedStatement, 'Monthly statement generated successfully')
+  );
 });
 
-/**
- * PUT /api/v1/statements/:id/mark-paid
- * Marks a statement as paid (admin only).
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/v1/statements/:id/regenerate
+// Force-regenerates an existing statement with fresh bill data.
+// ─────────────────────────────────────────────────────────────────────────────
+export const regenerateStatement = asyncHandler(async (req, res) => {
+  const existing = await MonthlyStatement.findById(req.params.id).lean();
+  if (!existing) {
+    throw new ApiError(404, 'Statement not found');
+  }
+
+  const statement = await generateMonthlyStatement(
+    existing.customer.toString(),
+    existing.month,
+    existing.year,
+    req.user._id,
+    true  // forceRegenerate = true
+  );
+
+  const populated = await MonthlyStatement.findById(statement._id)
+    .populate('customer', 'name organization department phone email')
+    .populate('generatedBy', 'name')
+    .lean();
+
+  res.status(200).json(
+    new ApiResponse(200, populated, 'Statement regenerated successfully')
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/v1/statements/:id/mark-paid
+// Records a payment against a statement.
+// Recalculates closingBalance correctly.
+// ─────────────────────────────────────────────────────────────────────────────
 export const markStatementPaid = asyncHandler(async (req, res) => {
-  const { amount, paymentMethod } = req.body;
+  const { amount } = req.body;
 
   const statement = await MonthlyStatement.findById(req.params.id);
   if (!statement) {
     throw new ApiError(404, 'Statement not found');
   }
 
-  const paymentAmount = amount ? Number(amount) : statement.closingBalance;
+  if (statement.status === 'paid') {
+    throw new ApiError(400, 'Statement is already fully paid.');
+  }
 
-  statement.totalPaid += paymentAmount;
-  statement.closingBalance = Math.max(0, statement.openingBalance + statement.totalBilled - statement.totalPaid);
+  // Payment amount: use provided value or settle the full closing balance
+  const paymentAmount = amount ? roundTo2(Number(amount)) : statement.closingBalance;
 
-  if (statement.closingBalance === 0) {
-    statement.status = 'paid';
-    statement.paidAt = new Date();
+  if (paymentAmount <= 0) {
+    throw new ApiError(400, 'Payment amount must be greater than zero.');
+  }
+  if (paymentAmount > statement.closingBalance) {
+    throw new ApiError(
+      400,
+      `Payment (₹${paymentAmount}) exceeds outstanding balance (₹${statement.closingBalance}).`
+    );
+  }
+
+  // Update totals using integer arithmetic
+  statement.totalPaid    = roundTo2(safeSum(statement.totalPaid, paymentAmount));
+  // closingBalance = openingBalance + totalBilled - totalPaid (CORRECT formula)
+  statement.closingBalance = roundTo2(
+    safeSum(statement.openingBalance, statement.totalBilled, -statement.totalPaid)
+  );
+
+  if (statement.closingBalance <= 0) {
+    statement.closingBalance = 0;
+    statement.status  = 'paid';
+    statement.paidAt  = new Date();
   } else {
     statement.status = 'partial';
   }
 
   await statement.save();
 
-  // Update customer outstanding balance
+  // Reduce customer outstanding balance
   await Customer.findByIdAndUpdate(statement.customer, {
     $inc: { outstandingBalance: -paymentAmount },
   });
 
-  res.status(200).json(new ApiResponse(200, statement, 'Statement payment recorded successfully'));
+  res.status(200).json(
+    new ApiResponse(200, statement, 'Payment recorded successfully')
+  );
 });
 
-/**
- * DELETE /api/v1/statements/:id
- * Deletes a monthly statement and reverses outstanding balance.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v1/statements/:id/validate
+// Runs validation checks and returns full report (admin only).
+// ─────────────────────────────────────────────────────────────────────────────
+export const validateStatement = asyncHandler(async (req, res) => {
+  const statement = await MonthlyStatement.findById(req.params.id)
+    .populate('bills')
+    .lean();
+
+  if (!statement) {
+    throw new ApiError(404, 'Statement not found');
+  }
+
+  const { generateValidationReport } = await import('../utils/statementValidator.js');
+
+  const report = generateValidationReport({
+    bills:          statement.bills || [],
+    transactions:   statement.transactions || [],
+    dailySummary:   statement.dailySummary || [],
+    openingBalance: statement.openingBalance,
+    totalBilled:    statement.totalBilled,
+    totalPaid:      statement.totalPaid,
+    closingBalance: statement.closingBalance,
+    customerId:     statement.customer.toString(),
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        statementNumber: statement.statementNumber,
+        report,
+        summary: {
+          totalOrders:    statement.totalOrders,
+          totalBilled:    statement.totalBilled,
+          totalPaid:      statement.totalPaid,
+          openingBalance: statement.openingBalance,
+          closingBalance: statement.closingBalance,
+        },
+      },
+      report.passed ? 'Validation passed' : 'Validation FAILED — see report'
+    )
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/v1/statements/:id
+// Deletes statement and reverses outstanding balance contribution.
+// ─────────────────────────────────────────────────────────────────────────────
 export const deleteStatement = asyncHandler(async (req, res) => {
   const statement = await MonthlyStatement.findById(req.params.id);
   if (!statement) {
     throw new ApiError(404, 'Statement not found');
   }
 
-  // Reverse any outstanding-balance contribution
-  const netContribution = statement.totalBilled - statement.totalPaid;
-  if (netContribution !== 0) {
+  // Reverse only the unpaid portion from customer's outstanding balance
+  const unpaidContribution = roundTo2(safeSum(statement.totalBilled, -statement.totalPaid));
+  if (unpaidContribution > 0) {
     await Customer.findByIdAndUpdate(statement.customer, {
-      $inc: { outstandingBalance: -netContribution },
+      $inc: { outstandingBalance: -unpaidContribution },
     });
   }
 
   await MonthlyStatement.deleteOne({ _id: statement._id });
 
-  res.status(200).json(new ApiResponse(200, {}, 'Statement deleted successfully. You can now regenerate it.'));
+  res.status(200).json(
+    new ApiResponse(200, {}, 'Statement deleted. You can now regenerate it.')
+  );
 });

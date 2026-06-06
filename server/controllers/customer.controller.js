@@ -1,5 +1,6 @@
 import Customer from '../models/Customer.model.js';
 import Bill from '../models/Bill.model.js';
+import MonthlyStatement from '../models/MonthlyStatement.model.js';
 import ApiError from '../utils/ApiError.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -171,7 +172,7 @@ export const updateCustomer = asyncHandler(async (req, res) => {
 
 /**
  * DELETE /api/v1/customers/:id
- * Soft-deactivates a customer (admin only).
+ * Cascading hard-deletes a customer, their bills, and statements (admin only).
  */
 export const deleteCustomer = asyncHandler(async (req, res) => {
   const customer = await Customer.findById(req.params.id);
@@ -179,22 +180,13 @@ export const deleteCustomer = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Customer not found');
   }
 
-  // Check for pending bills
-  const pendingBills = await Bill.countDocuments({
-    customer: req.params.id,
-    paymentStatus: { $in: ['pending', 'partial'] },
-    isVoid: false,
-  });
+  // Cascading hard delete
+  await Promise.all([
+    MonthlyStatement.deleteMany({ customer: req.params.id }),
+    Bill.deleteMany({ customer: req.params.id }),
+  ]);
 
-  if (pendingBills > 0) {
-    throw new ApiError(
-      400,
-      `Cannot deactivate customer. ${pendingBills} pending bill(s) exist. Clear them first.`
-    );
-  }
+  await customer.deleteOne();
 
-  customer.isActive = false;
-  await customer.save();
-
-  res.status(200).json(new ApiResponse(200, null, 'Customer deactivated successfully'));
+  res.status(200).json(new ApiResponse(200, null, 'Customer and all associated records deleted successfully'));
 });

@@ -6,73 +6,69 @@ import { buildBillOfSupplyHTML, buildMonthlyStatementHTML } from '../templates/i
 import { numberToWords as numberToWordsUtil } from '../utils/numberToWords.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname  = dirname(__filename);
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Converts the BPC logo to base64 for embedding in PDF HTML.
+ * Converts the BPC logo to a base64 data URI for embedding in PDF HTML.
  */
 const getBase64Logo = async () => {
   try {
     const logoPath = join(__dirname, '..', 'assets', 'logo.jpeg');
     const logoBuffer = await readFile(logoPath);
     return `data:image/jpeg;base64,${logoBuffer.toString('base64')}`;
-  } catch (error) {
-    console.warn('Logo file not found, using text fallback:', error.message);
+  } catch (err) {
+    console.warn('[PDF] Logo not found, using text fallback:', err.message);
     return '';
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Main PDF generation function.
- * Uses puppeteer-core + @sparticuz/chromium for serverless compatibility.
+ * Uses puppeteer-core + @sparticuz/chromium for serverless / local compatibility.
  *
- * @sparticuz/chromium provides a compressed Chromium binary (~50MB) that
- * extracts to /tmp at runtime. This keeps the function well under
- * Vercel's 250MB unzipped size limit.
- *
- * For local development, set PUPPETEER_EXECUTABLE_PATH to your local
- * Chrome/Chromium binary path (e.g., "C:/Program Files/Google/Chrome/Application/chrome.exe").
+ * @param {Object} data     - Bill or MonthlyStatement document (populated)
+ * @param {Object} settings - Settings document
+ * @param {string} type     - 'monthly' | 'invoice'
+ * @returns {Promise<Buffer>} PDF buffer
  */
 export const generateBillPDF = async (data, settings, type = 'monthly') => {
   const logoBase64 = await getBase64Logo();
 
   const html = type === 'monthly'
-    ? generateMonthlyStatementHTML(data, settings, logoBase64)
-    : generateInvoiceHTML(data, settings, logoBase64);
+    ? buildMonthlyStatementPDFHTML(data, settings, logoBase64)
+    : buildInvoicePDFHTML(data, settings, logoBase64);
 
   let browser;
   try {
-    // Vercel Node 20+ runs on Amazon Linux 2023 which lacks libnss3.so.
-    // Sparticuz natively provides these missing libraries, but fails to detect Vercel's environment.
-    // We force AL2023 detection BEFORE importing the module so it extracts and loads the libraries.
     process.env.AWS_LAMBDA_JS_RUNTIME = 'nodejs20.x';
     const { default: chromium } = await import('@sparticuz/chromium');
 
-    // Resolve the Chromium executable path:
-    // - On Vercel/serverless: @sparticuz/chromium extracts its binary to /tmp
-    // - On local dev: use PUPPETEER_EXECUTABLE_PATH env var if set
     const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH
       || await chromium.executablePath();
 
-    console.log(`[PDF] Launching browser — env: ${process.env.NODE_ENV}, path: ${executablePath}`);
+    console.log(`[PDF] Launching — env:${process.env.NODE_ENV} path:${executablePath}`);
 
     browser = await puppeteer.launch({
-      args: chromium.args,
+      args:            chromium.args,
       defaultViewport: chromium.defaultViewport,
       executablePath,
-      headless: chromium.headless,
+      headless:        chromium.headless,
     });
 
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
 
     const pdf = await page.pdf({
-      format: 'A4',
+      format:          'A4',
       printBackground: true,
-      margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
+      margin:          { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' },
     });
 
-    console.log(`[PDF] Generated successfully — size: ${pdf.length} bytes`);
+    console.log(`[PDF] Generated — ${pdf.length} bytes`);
     return Buffer.from(pdf);
   } catch (err) {
     console.error('[PDF] Generation failed:', err);
@@ -84,128 +80,138 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MONTHLY STATEMENT PDF builder
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Generates the Monthly Statement HTML matching the BPC pixel-perfect template design.
+ * Builds the Monthly Statement HTML for PDF.
+ *
+ * FIX: Uses data.totalBilled (not data.closingBalance) as the total billed amount.
+ *      Uses data.totalPaid for received amount.
+ *      Uses data.closingBalance for balance due.
+ * These three values are guaranteed to reconcile by the billing service.
  */
-const generateMonthlyStatementHTML = (data, settings, logoBase64) => {
-  const customer = data.customer || {};
+const buildMonthlyStatementPDFHTML = (data, settings, logoBase64) => {
+  const customer   = data.customer || {};
+  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const monthName  = monthNames[(data.month || 1) - 1];
+  const year       = data.year || new Date().getFullYear();
+
+  // ── Use transactions for flat list, or dailySummary for grouped ──────────
   const transactions = data.transactions || [];
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const monthName = monthNames[(data.month || 1) - 1];
-  const year = data.year || new Date().getFullYear();
 
   const formatDate = (d) => {
     if (!d) return '';
-    const date = new Date(d);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const y = date.getFullYear();
-    return `${day}/${month}/${y}`;
+    const istMs = new Date(d).getTime() + 330 * 60 * 1000;
+    const date  = new Date(istMs);
+    return `${String(date.getUTCDate()).padStart(2,'0')}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${date.getUTCFullYear()}`;
   };
 
-  const statementNo = data.statementNumber || data.billNumber || '';
-  const statementDate = `For ${monthName} ${year}`;
-  const totalBilled = data.closingBalance || data.totalAmount || 0;
-
-  const words = numberToWordsUtil(totalBilled);
-  const amountInWords = `${words} Rupees`;
-
+  // ── Build PDF transaction rows ────────────────────────────────────────────
   const formattedTransactions = [];
 
+  // Opening balance row (if non-zero)
   if (data.openingBalance && data.openingBalance > 0) {
     formattedTransactions.push({
-      date: '',
-      particulars: 'Opening Balance (Previous Month)',
-      amount: data.openingBalance,
+      date:        '',
+      particulars: 'Opening Balance (Brought Forward)',
+      amount:      data.openingBalance,
+      isMeta:      true,
     });
   }
 
+  // One row per bill/transaction
   for (const t of transactions) {
     formattedTransactions.push({
-      date: formatDate(t.date),
-      particulars: t.particulars,
-      amount: t.amount,
+      date:        formatDate(t.date),
+      particulars: t.particulars || '-',
+      billRef:     t.billNumber,
+      amount:      t.amount,
     });
   }
 
-  if (transactions.length === 0 && data.items) {
-    for (const item of data.items) {
-      formattedTransactions.push({
-        date: formatDate(data.serviceDate || data.billDate),
-        particulars: `${item.name} × ${item.quantity}`,
-        amount: item.totalPrice,
-      });
-    }
-  }
+  // ── FIX: Use data.totalBilled — NOT data.closingBalance ──────────────────
+  const totalBilled    = data.totalBilled  || 0;
+  const receivedAmount = data.totalPaid    || 0;
+  const balanceDue     = data.closingBalance || 0;
+
+  const words         = numberToWordsUtil(balanceDue);
+  const amountInWords = `${words} Rupees`;
 
   const bankDetails = {
-    vendorName: settings.bankDetails?.vendorName || 'Balaji S',
-    ifscCode: settings.bankDetails?.ifscCode || 'SIBL0000082',
+    vendorName:    settings.bankDetails?.vendorName    || 'Balaji S',
+    ifscCode:      settings.bankDetails?.ifscCode      || 'SIBL0000082',
     accountNumber: settings.bankDetails?.accountNumber || '0082073000002485',
-    bankName: settings.bankDetails?.bankName || 'South Indian Bank',
-    branch: settings.bankDetails?.branch || 'TIRUCHIRAPALLI',
+    bankName:      settings.bankDetails?.bankName      || 'South Indian Bank',
+    branch:        settings.bankDetails?.branch        || 'TIRUCHIRAPALLI',
   };
 
   return buildMonthlyStatementHTML({
-    statementNo,
-    statementDate,
-    billTo: customer.name || '',
-    placeOfSupply: 'Tamil Nadu',
-    transactions: formattedTransactions,
-    totalBilled,
+    statementNo:    data.statementNumber || '',
+    statementDate:  `For ${monthName} ${year}`,
+    periodStart:    formatDate(data.periodStart),
+    periodEnd:      formatDate(data.periodEnd),
+    billTo:         customer.name || '',
+    customerPhone:  customer.phone || '',
+    customerEmail:  customer.email || '',
+    placeOfSupply:  'Tamil Nadu',
+    transactions:   formattedTransactions,
+    totalOrders:    data.totalOrders || transactions.length,
+    openingBalance: data.openingBalance || 0,
+    totalBilled,        // ← FIXED
+    receivedAmount,     // ← FIXED
+    balanceDue,         // ← FIXED (was incorrectly using totalBilled before)
     amountInWords,
-    receivedAmount: data.totalPaid || data.paidAmount || 0,
     logoBase64,
     bankDetails,
   });
 };
 
-/**
- * Generates the Invoice / Bill of Supply HTML using the pixel-perfect template.
- */
-const generateInvoiceHTML = (data, settings, logoBase64) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// INVOICE / BILL OF SUPPLY PDF builder
+// ─────────────────────────────────────────────────────────────────────────────
+
+const buildInvoicePDFHTML = (data, settings, logoBase64) => {
   const customer = data.customer || {};
-  const items = data.items || [];
+  const items    = data.items    || [];
 
   const formatDate = (d) => {
     if (!d) return '';
-    const date = new Date(d);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    return `${day}/${month}/${year}`;
+    const istMs = new Date(d).getTime() + 330 * 60 * 1000;
+    const date  = new Date(istMs);
+    return `${String(date.getUTCDate()).padStart(2,'0')}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${date.getUTCFullYear()}`;
   };
 
   const templateItems = items.map((item) => ({
-    name: item.name,
-    qty: item.quantity,
-    rate: item.unitPrice,
+    name:  item.name,
+    qty:   item.quantity,
+    rate:  item.unitPrice,
     total: item.totalPrice,
   }));
 
-  const subtotalQty = items.reduce((sum, item) => sum + item.quantity, 0);
+  const subtotalQty    = items.reduce((sum, item) => sum + item.quantity, 0);
   const subtotalAmount = data.totalAmount || items.reduce((sum, item) => sum + item.totalPrice, 0);
 
-  const words = numberToWordsUtil(subtotalAmount);
+  const words         = numberToWordsUtil(subtotalAmount);
   const amountInWords = `${words} Rupees`;
-
   const receivedAmount = data.paidAmount || 0;
 
   const bankDetails = {
-    vendorName: settings.bankDetails?.vendorName || 'Balaji S',
-    ifscCode: settings.bankDetails?.ifscCode || 'SIBL0000082',
+    vendorName:    settings.bankDetails?.vendorName    || 'Balaji S',
+    ifscCode:      settings.bankDetails?.ifscCode      || 'SIBL0000082',
     accountNumber: settings.bankDetails?.accountNumber || '0082073000002485',
-    bankName: settings.bankDetails?.bankName || 'South Indian Bank',
-    branch: settings.bankDetails?.branch || 'TIRUCHIRAPALLI',
+    bankName:      settings.bankDetails?.bankName      || 'South Indian Bank',
+    branch:        settings.bankDetails?.branch        || 'TIRUCHIRAPALLI',
   };
 
   return buildBillOfSupplyHTML({
-    invoiceNo: data.billNumber || '',
-    invoiceDate: formatDate(data.billDate),
-    billTo: customer.name || '',
-    shipTo: customer.name || '',
-    placeOfSupply: 'Tamil Nadu',
-    items: templateItems,
+    invoiceNo:      data.billNumber || '',
+    invoiceDate:    formatDate(data.billDate),
+    billTo:         customer.name || '',
+    shipTo:         customer.name || '',
+    placeOfSupply:  'Tamil Nadu',
+    items:          templateItems,
     subtotalQty,
     subtotalAmount,
     amountInWords,

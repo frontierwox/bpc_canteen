@@ -17,7 +17,7 @@ const CustomerManagement = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const { data, isLoading } = useQuery({ queryKey: ['customers', { search, accountType: typeFilter }], queryFn: () => customerAPI.getAll({ search, accountType: typeFilter, limit: 100 }).then((r) => r.data.data) });
-  const deleteMut = useMutation({ mutationFn: (id) => customerAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['customers'] }); setDeleteTarget(null); toast.success('Customer deactivated'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed to deactivate') });
+  const deleteMut = useMutation({ mutationFn: (id) => customerAPI.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['customers'] }); setDeleteTarget(null); toast.success('Customer deleted'); }, onError: (e) => toast.error(e.response?.data?.message || 'Failed to delete') });
 
   const customers = data?.customers || [];
 
@@ -109,7 +109,7 @@ const CustomerManagement = () => {
                   <button onClick={() => { setEditing(c); setShowForm(true); }} className="flex-1 flex items-center justify-center gap-1.5 text-[12px] py-2 font-medium text-maroon-700 bg-maroon-50 rounded-lg hover:bg-maroon-100 transition-colors border border-maroon-100">
                     <Edit2 className="w-3 h-3" /> Edit Profile
                   </button>
-                  <button onClick={() => setDeleteTarget(c)} className="px-3 py-2 text-danger-text bg-danger-bg rounded-lg hover:bg-danger-bg/80 transition-colors border border-danger-border/30 flex items-center justify-center" title="Deactivate Customer">
+                  <button onClick={() => setDeleteTarget(c)} className="px-3 py-2 text-danger-text bg-danger-bg rounded-lg hover:bg-danger-bg/80 transition-colors border border-danger-border/30 flex items-center justify-center" title="Delete Customer">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -127,7 +127,7 @@ const CustomerManagement = () => {
         </div>
       )}
 
-      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => deleteMut.mutate(deleteTarget._id)} title="Deactivate Customer" message={`Are you sure you want to deactivate "${deleteTarget?.name}"? This requires the customer to have no pending bills.`} confirmText="Deactivate" loading={deleteMut.isPending} />
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => deleteMut.mutate(deleteTarget._id)} title="Delete Customer" message={`Are you sure you want to permanently delete "${deleteTarget?.name}"? This action will also delete all associated bills and statements. This cannot be undone.`} confirmText="Delete" loading={deleteMut.isPending} />
 
       <AnimatePresence>
         {showForm && <CustomerForm customer={editing} onClose={() => { setShowForm(false); setEditing(null); }} />}
