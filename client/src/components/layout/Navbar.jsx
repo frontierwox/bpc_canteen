@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, Bell, LogOut, User, ChevronDown, ChevronRight } from 'lucide-react';
+import { Menu, LogOut, User, ChevronDown, ChevronRight } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import useAuthStore from '../../store/authStore';
 import useUIStore from '../../store/uiStore';
@@ -72,10 +72,6 @@ const Navbar = () => {
           </span>
         </div>
         
-        <button className="relative text-maroon-800 hover:text-maroon-600 p-2 rounded-lg hover:bg-maroon-50 transition-colors" id="notifications-btn">
-          <Bell className="w-5 h-5" />
-        </button>
-
         <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen(!menuOpen)} className="flex items-center gap-2 text-maroon-900 hover:text-maroon-700 pl-3 pr-2 py-1.5 rounded-lg hover:bg-maroon-50 transition-colors" id="user-menu-btn">
             <div className="w-8 h-8 rounded-full bg-maroon-50 border border-maroon-200 flex items-center justify-center text-maroon-600 font-semibold text-xs">
