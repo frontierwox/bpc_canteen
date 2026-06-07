@@ -5,9 +5,9 @@ export default {
     extend: {
       fontFamily: {
         display: ['Cormorant Garamond', 'Georgia', 'serif'],
-        body:    ['DM Sans', 'sans-serif'],
+        body:    ['Outfit', 'sans-serif'],
         mono:    ['JetBrains Mono', 'monospace'],
-        sans:    ['DM Sans', 'sans-serif'],
+        sans:    ['Outfit', 'sans-serif'],
       },
       colors: {
         maroon: {

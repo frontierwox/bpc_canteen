@@ -8,6 +8,7 @@ import useAuthStore from '../../store/authStore';
 const adminLinks = [
   { to: '/admin', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/admin/menu', icon: UtensilsCrossed, label: 'Menu Items' },
+  { to: '/admin/categories', icon: Tag, label: 'Categories' },
   { to: '/admin/customers', icon: Users, label: 'Customers' },
   { to: '/admin/employees', icon: UserCog, label: 'Employees' },
   { to: '/admin/bills', icon: Receipt, label: 'All Bills' },

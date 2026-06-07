@@ -21,6 +21,7 @@ import NotFound from './pages/public/NotFound';
 // Admin Pages — lazy loaded for code splitting
 const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
 const MenuManagement = lazy(() => import('./pages/admin/MenuManagement'));
+const CategoryManagement = lazy(() => import('./pages/admin/CategoryManagement'));
 const CustomerManagement = lazy(() => import('./pages/admin/CustomerManagement'));
 const AllBills = lazy(() => import('./pages/admin/AllBills'));
 const MonthlyStatements = lazy(() => import('./pages/admin/MonthlyStatements'));
@@ -64,6 +65,7 @@ const App = () => {
         <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminLayout /></ProtectedRoute>}>
           <Route index element={<SuspenseWrapper><AdminDashboard /></SuspenseWrapper>} />
           <Route path="menu" element={<SuspenseWrapper><MenuManagement /></SuspenseWrapper>} />
+          <Route path="categories" element={<SuspenseWrapper><CategoryManagement /></SuspenseWrapper>} />
           <Route path="customers" element={<SuspenseWrapper><CustomerManagement /></SuspenseWrapper>} />
           <Route path="employees" element={<SuspenseWrapper><EmployeeManagement /></SuspenseWrapper>} />
           <Route path="bills" element={<SuspenseWrapper><AllBills /></SuspenseWrapper>} />

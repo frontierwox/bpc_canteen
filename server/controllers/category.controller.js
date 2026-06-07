@@ -33,6 +33,7 @@ export const createCategory = asyncHandler(async (req, res) => {
     name,
     icon: icon || '',
     sortOrder: sortOrder || 0,
+    isCustom: req.body.isCustom || false,
   });
 
   res.status(201).json(new ApiResponse(201, category, 'Category created successfully'));
@@ -64,6 +65,7 @@ export const updateCategory = asyncHandler(async (req, res) => {
   if (icon !== undefined) category.icon = icon;
   if (sortOrder !== undefined) category.sortOrder = sortOrder;
   if (isActive !== undefined) category.isActive = isActive;
+  if (req.body.isCustom !== undefined) category.isCustom = req.body.isCustom;
 
   await category.save();
 

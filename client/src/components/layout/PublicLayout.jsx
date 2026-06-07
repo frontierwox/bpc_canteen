@@ -101,10 +101,14 @@ const PublicFooter = () => (
           <p className="text-[10px] text-[#9A7A7A] tracking-wider uppercase mt-px">Authentic • Fresh • Delicious</p>
         </div>
       </div>
-      <p className="text-[11px] text-[#9A7A7A] leading-relaxed max-w-xs">
-        Serving quality food with warmth and tradition.
-        <br className="hidden sm:inline" /> Every meal crafted with care.
-      </p>
+      <div className="flex flex-col items-center justify-center text-center gap-1 w-full flex-1">
+        <p className="text-[14px] sm:text-[15px] font-display font-semibold text-maroon-800 tracking-wide leading-tight">
+          Balaji Perfect Caters
+        </p>
+        <p className="text-[11px] sm:text-[12px] text-[#9A7A7A] italic leading-relaxed">
+          st.Joseph College (Autonomous) -Tiruchirapalli
+        </p>
+      </div>
       <p className="text-[11px] text-[#C0A080]">© {new Date().getFullYear()} BPC Canteen</p>
     </div>
 
