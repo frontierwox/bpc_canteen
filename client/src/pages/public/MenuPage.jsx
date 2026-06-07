@@ -510,24 +510,18 @@ const EmptyState = ({ query, onClear }) => (
    Hero Banner (top of page, subtle)
 ──────────────────────────────────────────────────────── */
 const HeroBanner = () => (
-  <div className="relative overflow-hidden rounded-2xl mb-8 bg-gradient-to-r from-maroon-950 via-maroon-900 to-maroon-800 px-6 py-8 sm:py-10">
+  <div className="relative overflow-hidden rounded-2xl mb-8 bg-gradient-to-r from-maroon-950 via-maroon-900 to-maroon-800 px-6 py-12 sm:py-16 flex items-center justify-center text-center shadow-lg border border-[rgba(212,160,23,0.15)]">
     {/* Decorative circles */}
     <div className="absolute -top-10 -right-10 w-44 h-44 bg-gold-400/10 rounded-full pointer-events-none" />
     <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-maroon-800/60 rounded-full pointer-events-none" />
     <div className="absolute top-4 right-24 w-20 h-20 bg-gold-300/5 rounded-full pointer-events-none" />
 
-    <div className="relative z-10 max-w-lg">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-gold-400 bg-gold-400/10 border border-gold-400/20 px-2.5 py-1 rounded-full">
-          Fresh Today
-        </span>
-      </div>
-      <h2 className="font-display text-[26px] sm:text-[32px] font-bold text-white leading-tight tracking-tight mb-2">
-        Crafted with love,<br />
-        <span className="text-gold-400">served with pride.</span>
+    <div className="relative z-10 max-w-2xl flex flex-col items-center">
+      <h2 className="font-display text-[32px] sm:text-[46px] font-bold text-gold-400 leading-tight tracking-wide mb-3 drop-shadow-sm">
+        Balaji Perfect Caters
       </h2>
-      <p className="text-[13px] sm:text-[14px] text-maroon-200 leading-relaxed max-w-sm">
-        Explore our freshly curated menu — from hearty meals to light bites, made with authentic flavours every day.
+      <p className="text-[16px] sm:text-[18px] text-maroon-100 italic leading-relaxed max-w-xl font-light tracking-wide drop-shadow-sm opacity-90">
+        St Joseph's College (Autonomous) -Tiruchirapalli
       </p>
     </div>
   </div>

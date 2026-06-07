@@ -28,11 +28,10 @@ const PublicNavbar = () => {
 
   return (
     <header
-      className={`sticky top-0 z-40 w-full transition-all duration-300 ${
-        scrolled
+      className={`sticky top-0 z-40 w-full transition-all duration-300 ${scrolled
           ? 'bg-[rgba(253,250,245,0.97)] backdrop-blur-xl shadow-[0_4px_24px_rgba(123,28,28,0.10)] border-b border-[rgba(123,28,28,0.10)]'
           : 'bg-[rgba(253,250,245,0.85)] backdrop-blur-md border-b border-[rgba(123,28,28,0.06)]'
-      }`}
+        }`}
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
@@ -101,32 +100,34 @@ const PublicFooter = () => (
           <p className="text-[10px] text-[#9A7A7A] tracking-wider uppercase mt-px">Authentic • Fresh • Delicious</p>
         </div>
       </div>
-      <div className="flex flex-col items-center justify-center text-center gap-1 w-full flex-1">
-        <p className="text-[14px] sm:text-[15px] font-display font-semibold text-maroon-800 tracking-wide leading-tight">
-          Balaji Perfect Caters
-        </p>
-        <p className="text-[11px] sm:text-[12px] text-[#9A7A7A] italic leading-relaxed">
-          st.Joseph College (Autonomous) -Tiruchirapalli
-        </p>
-      </div>
+      <p className="text-[11px] text-[#9A7A7A] leading-relaxed max-w-xs">
+        Serving quality food with warmth and tradition.
+        <br className="hidden sm:inline" /> Every meal crafted with care.
+      </p>
       <p className="text-[11px] text-[#C0A080]">© {new Date().getFullYear()} BPC Canteen</p>
     </div>
 
     {/* Frontier Wox Logo at the bottom perfectly */}
-    <div className="border-t border-[rgba(123,28,28,0.06)] bg-[#FDFAF5]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-center items-center">
-        <a 
-          href="https://frontierwox.in/" 
-          target="_blank" 
+    <div className="border-t border-[rgba(123,28,28,0.08)] bg-gradient-to-b from-[#FDFAF5] to-maroon-50/30">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 flex justify-center items-center">
+        <a
+          href="https://frontierwox.in/"
+          target="_blank"
           rel="noopener noreferrer"
-          className="group flex items-center gap-2 sm:gap-2.5 opacity-80 hover:opacity-100 transition-all duration-300"
+          className="group flex flex-col sm:flex-row items-center justify-center gap-2.5 sm:gap-4 opacity-90 hover:opacity-100 transition-all duration-500"
         >
-          <span className="text-[10px] tracking-widest text-[#9A7A7A] uppercase font-medium group-hover:text-maroon-700 transition-colors">Powered By</span>
-          <img 
-            src="/companylogo.png" 
-            alt="Frontier Wox" 
-            className="h-5 sm:h-6 w-auto object-contain transition-all duration-300 transform group-hover:scale-105" 
-          />
+          <span className="text-[10px] sm:text-[11px] tracking-[0.2em] text-[#9A7A7A] uppercase font-semibold group-hover:text-maroon-700 transition-colors">
+            Powered By
+          </span>
+          <div className="relative flex items-center justify-center p-1">
+            {/* Subtle glow effect on hover */}
+            <div className="absolute inset-0 bg-maroon-200 blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-full" />
+            <img
+              src="/companylogo.png"
+              alt="Frontier Wox"
+              className="relative h-9 sm:h-12 w-auto object-contain mix-blend-multiply drop-shadow-sm transition-all duration-500 transform group-hover:scale-105 group-hover:drop-shadow-md"
+            />
+          </div>
         </a>
       </div>
     </div>
