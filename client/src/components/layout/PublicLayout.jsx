@@ -29,8 +29,8 @@ const PublicNavbar = () => {
   return (
     <header
       className={`sticky top-0 z-40 w-full transition-all duration-300 ${scrolled
-          ? 'bg-[rgba(253,250,245,0.97)] backdrop-blur-xl shadow-[0_4px_24px_rgba(123,28,28,0.10)] border-b border-[rgba(123,28,28,0.10)]'
-          : 'bg-[rgba(253,250,245,0.85)] backdrop-blur-md border-b border-[rgba(123,28,28,0.06)]'
+        ? 'bg-[rgba(253,250,245,0.97)] backdrop-blur-xl shadow-[0_4px_24px_rgba(123,28,28,0.10)] border-b border-[rgba(123,28,28,0.10)]'
+        : 'bg-[rgba(253,250,245,0.85)] backdrop-blur-md border-b border-[rgba(123,28,28,0.06)]'
         }`}
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
@@ -123,7 +123,7 @@ const PublicFooter = () => (
             {/* Subtle glow effect on hover */}
             <div className="absolute inset-0 bg-maroon-200 blur-xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-full" />
             <img
-              src="/companylogo.png"
+              src="/companylogo.jpeg"
               alt="Frontier Wox"
               className="relative h-9 sm:h-12 w-auto object-contain mix-blend-multiply drop-shadow-sm transition-all duration-500 transform group-hover:scale-105 group-hover:drop-shadow-md"
             />

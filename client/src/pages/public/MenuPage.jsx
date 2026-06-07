@@ -510,18 +510,27 @@ const EmptyState = ({ query, onClear }) => (
    Hero Banner (top of page, subtle)
 ──────────────────────────────────────────────────────── */
 const HeroBanner = () => (
-  <div className="relative overflow-hidden rounded-2xl mb-8 bg-gradient-to-r from-maroon-950 via-maroon-900 to-maroon-800 px-6 py-12 sm:py-16 flex items-center justify-center text-center shadow-lg border border-[rgba(212,160,23,0.15)]">
-    {/* Decorative circles */}
-    <div className="absolute -top-10 -right-10 w-44 h-44 bg-gold-400/10 rounded-full pointer-events-none" />
-    <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-maroon-800/60 rounded-full pointer-events-none" />
-    <div className="absolute top-4 right-24 w-20 h-20 bg-gold-300/5 rounded-full pointer-events-none" />
+  <div className="relative overflow-hidden rounded-2xl mb-8 bg-gradient-to-br from-maroon-950 via-maroon-900 to-maroon-800 px-6 py-8 sm:py-10 flex flex-col items-center justify-center text-center shadow-xl border border-gold-400/20 group">
+    {/* Elegant subtle background glow */}
+    <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gold-500/10 via-transparent to-transparent opacity-60"></div>
+    
+    {/* Decorative abstract shapes */}
+    <div className="absolute -top-16 -right-12 w-48 h-48 bg-gold-400/5 rounded-full blur-3xl pointer-events-none transition-transform duration-1000 group-hover:scale-110" />
+    <div className="absolute -bottom-12 -left-12 w-40 h-40 bg-maroon-600/20 rounded-full blur-2xl pointer-events-none transition-transform duration-1000 group-hover:scale-110" />
 
-    <div className="relative z-10 max-w-2xl flex flex-col items-center">
-      <h2 className="font-display text-[32px] sm:text-[46px] font-bold text-gold-400 leading-tight tracking-wide mb-3 drop-shadow-sm">
+    <div className="relative z-10 flex flex-col items-center gap-1 sm:gap-2 max-w-3xl mx-auto">
+      <h2 className="font-display text-3xl sm:text-4xl md:text-[42px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-gold-300 via-gold-400 to-gold-200 leading-tight tracking-wide drop-shadow-sm pb-1">
         Balaji Perfect Caters
       </h2>
-      <p className="text-[16px] sm:text-[18px] text-maroon-100 italic leading-relaxed max-w-xl font-light tracking-wide drop-shadow-sm opacity-90">
-        St Joseph's College (Autonomous) -Tiruchirapalli
+      
+      <div className="flex items-center gap-3 w-full max-w-[200px] sm:max-w-[280px] my-1">
+        <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent to-gold-400/40"></div>
+        <Star className="w-3 h-3 text-gold-400/60" />
+        <div className="h-[1px] flex-1 bg-gradient-to-l from-transparent to-gold-400/40"></div>
+      </div>
+
+      <p className="text-[13.5px] sm:text-[15px] md:text-[16px] text-maroon-50/95 italic font-medium tracking-[0.02em] leading-relaxed drop-shadow-md">
+        St Joseph's College (Autonomous) - Tiruchirapalli
       </p>
     </div>
   </div>
