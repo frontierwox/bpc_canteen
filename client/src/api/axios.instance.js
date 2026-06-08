@@ -141,7 +141,9 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         // Clear auth state and redirect — session is definitively expired
         clearAccessToken();
-        window.location.href = '/login?expired=true';
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login?expired=true';
+        }
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
