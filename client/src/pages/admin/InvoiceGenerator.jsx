@@ -409,8 +409,13 @@ const InvoiceRow = ({ inv, onView, onDelete }) => {
     try {
       const res = await invoiceAPI.getPDF(inv._id);
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${inv.invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     } catch {
       toast.error('Failed to generate PDF');
     } finally {
@@ -780,9 +785,14 @@ const InvoiceGenerator = () => {
     try {
       const res = await invoiceAPI.getPDF(inv._id);
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      toast.success('PDF opened', { id: toastId });
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${inv.invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+      toast.success('PDF downloaded', { id: toastId });
     } catch {
       toast.error('Failed to generate PDF', { id: toastId });
     }
