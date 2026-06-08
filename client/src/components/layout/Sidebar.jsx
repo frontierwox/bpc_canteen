@@ -14,7 +14,6 @@ const adminLinks = [
   { to: '/admin/bills', icon: Receipt, label: 'All Bills' },
   { to: '/admin/invoice-generator', icon: FileText, label: 'Invoice Gen' },
   { to: '/admin/statements', icon: FileText, label: 'Statements' },
-  { to: '/admin/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/admin/qr', icon: QrCode, label: 'QR Code' },
   { to: '/admin/settings', icon: Settings, label: 'Settings' },
 ];

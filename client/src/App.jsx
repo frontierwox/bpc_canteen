@@ -74,8 +74,6 @@ const App = () => {
           <Route path="invoice-generator" element={<SuspenseWrapper><InvoiceGenerator /></SuspenseWrapper>} />
           <Route path="statements" element={<SuspenseWrapper><MonthlyStatements /></SuspenseWrapper>} />
           <Route path="statements/:id" element={<SuspenseWrapper><CustomerStatement /></SuspenseWrapper>} />
-          {/* TODO: Replace with dedicated AnalyticsDashboard component when built */}
-          <Route path="analytics" element={<Navigate to="/admin" replace />} />
           <Route path="qr" element={<SuspenseWrapper><QRManagement /></SuspenseWrapper>} />
           <Route path="settings" element={<SuspenseWrapper><SettingsPage /></SuspenseWrapper>} />
         </Route>
