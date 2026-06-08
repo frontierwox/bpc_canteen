@@ -1,12 +1,13 @@
-import User from '../models/User.model.js';
-import Bill from '../models/Bill.model.js';
+import User    from '../models/User.model.js';
+import Bill    from '../models/Bill.model.js';
 import ApiError from '../utils/ApiError.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import escapeRegex from '../utils/escapeRegex.js';
 
+// ─── GET /api/v1/users ────────────────────────────────────────────────────────
 /**
- * GET /api/v1/users
- * Returns all users (admin only). Supports search and role filter.
+ * Returns paginated users with optional search and role filter. Admin only.
  */
 export const getAllUsers = asyncHandler(async (req, res) => {
   const { search, role, isActive, page = 1, limit = 20 } = req.query;
@@ -14,13 +15,14 @@ export const getAllUsers = asyncHandler(async (req, res) => {
   const filter = {};
 
   if (search) {
+    const safe = escapeRegex(search);
     filter.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } },
+      { name:  { $regex: safe, $options: 'i' } },
+      { email: { $regex: safe, $options: 'i' } },
     ];
   }
 
-  if (role) filter.role = role;
+  if (role)              filter.role     = role;
   if (isActive !== undefined) filter.isActive = isActive === 'true';
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -39,7 +41,7 @@ export const getAllUsers = asyncHandler(async (req, res) => {
       users,
       pagination: {
         total,
-        page: Number(page),
+        page:  Number(page),
         limit: Number(limit),
         pages: Math.ceil(total / Number(limit)),
       },
@@ -47,9 +49,9 @@ export const getAllUsers = asyncHandler(async (req, res) => {
   );
 });
 
+// ─── GET /api/v1/users/:id ────────────────────────────────────────────────────
 /**
- * GET /api/v1/users/:id
- * Returns a single user by ID.
+ * Returns a single user by ID (no sensitive fields). Admin only.
  */
 export const getUserById = asyncHandler(async (req, res) => {
   const user = await User.findById(req.params.id).select('-refreshToken');
@@ -61,14 +63,14 @@ export const getUserById = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, user, 'User fetched successfully'));
 });
 
+// ─── POST /api/v1/users ───────────────────────────────────────────────────────
 /**
- * POST /api/v1/users
- * Creates a new user (admin only).
+ * Creates a new user. Admin only.
+ * Password is hashed by the User model's pre-save hook.
  */
 export const createUser = asyncHandler(async (req, res) => {
   const { name, email, password, role, phone } = req.body;
 
-  // Check if email already exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     throw new ApiError(409, 'A user with this email already exists.');
@@ -78,12 +80,11 @@ export const createUser = asyncHandler(async (req, res) => {
     name,
     email,
     password,
-    role: role || 'employee',
+    role:      role || 'employee',
     phone,
     createdBy: req.user._id,
   });
 
-  // Remove password from response
   const userResponse = user.toObject();
   delete userResponse.password;
   delete userResponse.refreshToken;
@@ -91,9 +92,10 @@ export const createUser = asyncHandler(async (req, res) => {
   res.status(201).json(new ApiResponse(201, userResponse, 'User created successfully'));
 });
 
+// ─── PUT /api/v1/users/:id ────────────────────────────────────────────────────
 /**
- * PUT /api/v1/users/:id
- * Updates a user (admin only). Cannot update password via this route.
+ * Updates user profile fields. Admin only.
+ * Password changes must go through the dedicated reset-password route.
  */
 export const updateUser = asyncHandler(async (req, res) => {
   const { name, email, role, phone, isActive } = req.body;
@@ -103,12 +105,12 @@ export const updateUser = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'User not found');
   }
 
-  // Prevent admin from deactivating themselves
+  // Prevent admin from deactivating their own account
   if (req.user._id.toString() === req.params.id && isActive === false) {
     throw new ApiError(400, 'You cannot deactivate your own account.');
   }
 
-  // Check email uniqueness if changed
+  // Check email uniqueness if being changed
   if (email && email !== user.email) {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -116,10 +118,10 @@ export const updateUser = asyncHandler(async (req, res) => {
     }
   }
 
-  if (name) user.name = name;
-  if (email) user.email = email;
-  if (role) user.role = role;
-  if (phone !== undefined) user.phone = phone;
+  if (name     !== undefined) user.name     = name;
+  if (email    !== undefined) user.email    = email;
+  if (role     !== undefined) user.role     = role;
+  if (phone    !== undefined) user.phone    = phone;
   if (isActive !== undefined) user.isActive = isActive;
 
   await user.save({ validateBeforeSave: true });
@@ -131,26 +133,37 @@ export const updateUser = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, userResponse, 'User updated successfully'));
 });
 
+// ─── DELETE /api/v1/users/:id ─────────────────────────────────────────────────
 /**
- * DELETE /api/v1/users/:id
- * Permanently deletes a user (admin only).
+ * Permanently deletes a user. Admin only.
+ * Nullifies the createdBy reference on all bills created by this user
+ * to prevent broken populate() references across the application.
  */
 export const deleteUser = asyncHandler(async (req, res) => {
   if (req.user._id.toString() === req.params.id) {
     throw new ApiError(400, 'You cannot delete your own account.');
   }
 
-  const user = await User.findByIdAndDelete(req.params.id);
+  const user = await User.findById(req.params.id);
   if (!user) {
     throw new ApiError(404, 'User not found');
   }
 
+  // Anonymise bill references before deleting the user — prevents null-reference
+  // errors when the frontend tries to display bill creator information
+  await Bill.updateMany(
+    { createdBy: req.params.id },
+    { $set: { createdBy: null } }
+  );
+
+  await user.deleteOne();
+
   res.status(200).json(new ApiResponse(200, null, 'User deleted successfully'));
 });
 
+// ─── PUT /api/v1/users/:id/reset-password ────────────────────────────────────
 /**
- * PUT /api/v1/users/:id/reset-password
- * Admin resets another user's password.
+ * Admin resets another user's password. Forces re-login on all devices.
  */
 export const resetUserPassword = asyncHandler(async (req, res) => {
   const { newPassword } = req.body;
@@ -165,15 +178,16 @@ export const resetUserPassword = asyncHandler(async (req, res) => {
   }
 
   user.password = newPassword;
-  user.refreshToken = ''; // Force re-login
+  // Invalidate all existing sessions
+  await User.findByIdAndUpdate(user._id, { $unset: { refreshToken: 1 } });
   await user.save();
 
   res.status(200).json(new ApiResponse(200, null, 'Password reset successfully'));
 });
 
+// ─── GET /api/v1/users/:id/activity ──────────────────────────────────────────
 /**
- * GET /api/v1/users/:id/activity
- * Returns bill activity for a specific user.
+ * Returns paginated bill activity for a specific user. Admin only.
  */
 export const getUserActivity = asyncHandler(async (req, res) => {
   const { page = 1, limit = 20 } = req.query;
@@ -200,7 +214,7 @@ export const getUserActivity = asyncHandler(async (req, res) => {
       bills,
       pagination: {
         total,
-        page: Number(page),
+        page:  Number(page),
         limit: Number(limit),
         pages: Math.ceil(total / Number(limit)),
       },

@@ -29,12 +29,28 @@ export const getSummary = asyncHandler(async (req, res) => {
     // Today's revenue
     Bill.aggregate([
       { $match: { billDate: { $gte: today, $lt: tomorrow }, isVoid: false } },
-      { $group: { _id: null, revenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
+      { $group: {
+          _id: null,
+          revenue: { $sum: '$totalAmount' },
+          count: { $sum: 1 },
+          cgstCollected: { $sum: '$cgstAmount' },
+          sgstCollected: { $sum: '$sgstAmount' },
+          taxCollected: { $sum: '$taxAmount' }
+        }
+      },
     ]),
     // This month's revenue
     Bill.aggregate([
       { $match: { billDate: { $gte: monthStart, $lte: monthEnd }, isVoid: false } },
-      { $group: { _id: null, revenue: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
+      { $group: {
+          _id: null,
+          revenue: { $sum: '$totalAmount' },
+          count: { $sum: 1 },
+          cgstCollected: { $sum: '$cgstAmount' },
+          sgstCollected: { $sum: '$sgstAmount' },
+          taxCollected: { $sum: '$taxAmount' }
+        }
+      },
     ]),
     // Pending bills
     Bill.aggregate([
@@ -58,6 +74,9 @@ export const getSummary = asyncHandler(async (req, res) => {
       todayBills: todayStats[0]?.count || 0,
       monthRevenue: monthStats[0]?.revenue || 0,
       monthBills: monthStats[0]?.count || 0,
+      monthCGST: monthStats[0]?.cgstCollected || 0,
+      monthSGST: monthStats[0]?.sgstCollected || 0,
+      monthTax: monthStats[0]?.taxCollected || 0,
       pendingAmount: pendingStats[0]?.amount || 0,
       pendingBills: pendingStats[0]?.count || 0,
       activeCustomers,

@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import { menuAPI, categoryAPI } from '../../api/menu.api';
 import { customerAPI } from '../../api/customer.api';
 import { billAPI } from '../../api/bill.api';
+import { settingsAPI } from '../../api/settings.api';
 import useCartStore from '../../store/cartStore';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { formatINR } from '../../utils/currency.utils';
@@ -22,11 +23,16 @@ const CreateBill = () => {
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ name: '', organization: '', phone: '', accountType: 'immediate' });
 
-  const { items, customerId, customerData, billType, notes, paymentMethod, addItem, removeItem, updateQuantity, setCustomer, setBillType, setNotes, setPaymentMethod, clearCart } = useCartStore();
+  const { items, customerId, customerData, billType, notes, paymentMethod, settledByName, settledByPhone, settledByCompany, addItem, removeItem, updateQuantity, setCustomer, setBillType, setNotes, setPaymentMethod, setSettledByName, setSettledByPhone, setSettledByCompany, clearCart } = useCartStore();
 
   const { data: menuData, isLoading: menuLoading } = useQuery({ queryKey: ['menu', { limit: 200 }], queryFn: () => menuAPI.getAll({ limit: 200 }).then((r) => r.data.data) });
   const { data: cats } = useQuery({ queryKey: ['categories'], queryFn: () => categoryAPI.getAll().then((r) => r.data.data) });
   const { data: customersData } = useQuery({ queryKey: ['customers', { search: customerSearch }], queryFn: () => customerAPI.getAll({ search: customerSearch, limit: 20 }).then((r) => r.data.data.customers) });
+  const { data: settingsData } = useQuery({ queryKey: ['settings'], queryFn: () => settingsAPI.get().then((r) => r.data.data) });
+
+  const settings = settingsData || {};
+  const cgstRate = settings.defaultCGSTRate ?? 2.5;
+  const sgstRate = settings.defaultSGSTRate ?? 2.5;
 
   const menuItems = menuData?.items || [];
   const categories = cats || [];
@@ -41,6 +47,9 @@ const CreateBill = () => {
 
   const subtotal = items.reduce((s, i) => s + i.totalPrice, 0);
   const itemCount = items.reduce((s, i) => s + i.quantity, 0);
+  const cgstAmount = subtotal * (cgstRate / 100);
+  const sgstAmount = subtotal * (sgstRate / 100);
+  const totalAmount = subtotal + cgstAmount + sgstAmount;
 
   const createBillMut = useMutation({
     mutationFn: (data) => billAPI.create(data),
@@ -63,6 +72,13 @@ const CreateBill = () => {
       items: items.map((i) => ({ menuItem: i.menuItemId, name: i.name, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice })),
       paymentMethod,
       notes,
+      cgst: cgstRate,
+      sgst: sgstRate,
+      settlementDetails: {
+        settledByName,
+        settledByPhone,
+        settledByCompany
+      }
     });
   };
 
@@ -175,8 +191,8 @@ const CreateBill = () => {
 
       {/* Right: Cart */}
       <div className="hidden lg:flex flex-col w-[380px] bg-surface-card border border-[rgba(123,28,28,0.08)] rounded-xl shadow-sm sticky top-20 max-h-[calc(100vh-7rem)] overflow-hidden">
-        <CartPanel items={items} subtotal={subtotal} billType={billType} notes={notes} paymentMethod={paymentMethod}
-          updateQuantity={updateQuantity} removeItem={removeItem} setBillType={setBillType} setNotes={setNotes} setPaymentMethod={setPaymentMethod}
+        <CartPanel items={items} subtotal={subtotal} cgstRate={cgstRate} sgstRate={sgstRate} cgstAmount={cgstAmount} sgstAmount={sgstAmount} totalAmount={totalAmount} billType={billType} notes={notes} paymentMethod={paymentMethod} settledByName={settledByName} settledByPhone={settledByPhone} settledByCompany={settledByCompany}
+          updateQuantity={updateQuantity} removeItem={removeItem} setBillType={setBillType} setNotes={setNotes} setPaymentMethod={setPaymentMethod} setSettledByName={setSettledByName} setSettledByPhone={setSettledByPhone} setSettledByCompany={setSettledByCompany}
           handleSubmit={handleSubmit} loading={createBillMut.isPending} customerId={customerId} />
       </div>
 
@@ -192,8 +208,8 @@ const CreateBill = () => {
                 <button onClick={() => setShowCart(false)} className="p-2 bg-maroon-50 rounded-full text-maroon-600"><X className="w-5 h-5" /></button>
               </div>
               <div className="flex-1 overflow-hidden">
-                <CartPanel items={items} subtotal={subtotal} billType={billType} notes={notes} paymentMethod={paymentMethod}
-                  updateQuantity={updateQuantity} removeItem={removeItem} setBillType={setBillType} setNotes={setNotes} setPaymentMethod={setPaymentMethod}
+                <CartPanel items={items} subtotal={subtotal} cgstRate={cgstRate} sgstRate={sgstRate} cgstAmount={cgstAmount} sgstAmount={sgstAmount} totalAmount={totalAmount} billType={billType} notes={notes} paymentMethod={paymentMethod} settledByName={settledByName} settledByPhone={settledByPhone} settledByCompany={settledByCompany}
+                  updateQuantity={updateQuantity} removeItem={removeItem} setBillType={setBillType} setNotes={setNotes} setPaymentMethod={setPaymentMethod} setSettledByName={setSettledByName} setSettledByPhone={setSettledByPhone} setSettledByCompany={setSettledByCompany}
                   handleSubmit={handleSubmit} loading={createBillMut.isPending} customerId={customerId} />
               </div>
             </motion.div>
@@ -289,7 +305,7 @@ const CreateBill = () => {
         <motion.button initial={{ y: 100 }} animate={{ y: 0 }} onClick={() => setShowCart(true)}
           className="lg:hidden fixed bottom-[88px] left-4 right-4 btn-primary py-4 rounded-xl shadow-[0_8px_32px_rgba(123,28,28,0.3)] justify-between z-30 flex">
           <span className="flex items-center gap-2"><ShoppingCart className="w-5 h-5" /> {itemCount} items</span>
-          <span className="font-bold text-lg">{formatINR(subtotal)} →</span>
+          <span className="font-bold text-lg">{formatINR(totalAmount)} →</span>
         </motion.button>
       )}
     </div>
@@ -297,7 +313,7 @@ const CreateBill = () => {
 };
 
 /** Shared cart panel for desktop sidebar and mobile sheet */
-const CartPanel = ({ items, subtotal, billType, notes, paymentMethod, updateQuantity, removeItem, setBillType, setNotes, setPaymentMethod, handleSubmit, loading, customerId }) => (
+const CartPanel = ({ items, subtotal, cgstRate, sgstRate, cgstAmount, sgstAmount, totalAmount, billType, notes, paymentMethod, settledByName, settledByPhone, settledByCompany, updateQuantity, removeItem, setBillType, setNotes, setPaymentMethod, setSettledByName, setSettledByPhone, setSettledByCompany, handleSubmit, loading, customerId }) => (
   <div className="flex flex-col h-full bg-surface-card">
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
       {items.length === 0 ? (
@@ -368,11 +384,39 @@ const CartPanel = ({ items, subtotal, billType, notes, paymentMethod, updateQuan
           <label className="block text-[11px] font-medium text-[#9A7A7A] uppercase tracking-wider mb-1.5">Notes</label>
           <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Add any special instructions..." className="form-input py-2.5 text-[14px]" />
         </div>
+        
+        {billType === 'monthly_credit' && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-3 pt-2 border-t border-[rgba(123,28,28,0.05)]">
+            <label className="block text-[11px] font-medium text-[#9A7A7A] uppercase tracking-wider">Settlement Details (Optional)</label>
+            <input value={settledByName} onChange={(e) => setSettledByName(e.target.value)} placeholder="Settled By (Name)" className="form-input py-2 text-[13px]" />
+            <input value={settledByPhone} onChange={(e) => setSettledByPhone(e.target.value)} placeholder="Phone Number" className="form-input py-2 text-[13px]" />
+            <input value={settledByCompany} onChange={(e) => setSettledByCompany(e.target.value)} placeholder="Company / Dept" className="form-input py-2 text-[13px]" />
+          </motion.div>
+        )}
       </div>
 
-      <div className="flex justify-between items-center pt-4 border-t border-[rgba(123,28,28,0.08)]">
+      <div className="space-y-2 pt-3 border-t border-[rgba(123,28,28,0.08)]">
+        <div className="flex justify-between items-center text-[13px] text-[#5A3A3A]">
+          <span>Subtotal</span>
+          <span className="font-medium">{formatINR(subtotal)}</span>
+        </div>
+        {(cgstAmount > 0 || sgstAmount > 0) && (
+          <>
+            <div className="flex justify-between items-center text-[13px] text-[#5A3A3A]">
+              <span>CGST ({cgstRate}%)</span>
+              <span className="font-medium">{formatINR(cgstAmount)}</span>
+            </div>
+            <div className="flex justify-between items-center text-[13px] text-[#5A3A3A]">
+              <span>SGST ({sgstRate}%)</span>
+              <span className="font-medium">{formatINR(sgstAmount)}</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="flex justify-between items-center pt-3 border-t border-[rgba(123,28,28,0.08)]">
         <span className="text-[15px] font-medium text-[#5A3A3A]">Total Amount</span>
-        <span className="text-2xl font-display font-bold text-maroon-800">{formatINR(subtotal)}</span>
+        <span className="text-2xl font-display font-bold text-maroon-800">{formatINR(totalAmount)}</span>
       </div>
 
       <button onClick={handleSubmit} disabled={loading || items.length === 0 || !customerId} className="btn-primary w-full justify-center py-3.5 text-[15px] shadow-[0_8px_20px_rgba(123,28,28,0.2)] disabled:shadow-none">

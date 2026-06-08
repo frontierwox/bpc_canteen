@@ -24,6 +24,7 @@ const MenuManagement = lazy(() => import('./pages/admin/MenuManagement'));
 const CategoryManagement = lazy(() => import('./pages/admin/CategoryManagement'));
 const CustomerManagement = lazy(() => import('./pages/admin/CustomerManagement'));
 const AllBills = lazy(() => import('./pages/admin/AllBills'));
+const InvoiceGenerator = lazy(() => import('./pages/admin/InvoiceGenerator'));
 const MonthlyStatements = lazy(() => import('./pages/admin/MonthlyStatements'));
 const CustomerStatement = lazy(() => import('./pages/admin/CustomerStatement'));
 const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'));
@@ -70,9 +71,11 @@ const App = () => {
           <Route path="employees" element={<SuspenseWrapper><EmployeeManagement /></SuspenseWrapper>} />
           <Route path="bills" element={<SuspenseWrapper><AllBills /></SuspenseWrapper>} />
           <Route path="bills/:id" element={<SuspenseWrapper><BillDetail /></SuspenseWrapper>} />
+          <Route path="invoice-generator" element={<SuspenseWrapper><InvoiceGenerator /></SuspenseWrapper>} />
           <Route path="statements" element={<SuspenseWrapper><MonthlyStatements /></SuspenseWrapper>} />
           <Route path="statements/:id" element={<SuspenseWrapper><CustomerStatement /></SuspenseWrapper>} />
-          <Route path="analytics" element={<SuspenseWrapper><AdminDashboard /></SuspenseWrapper>} />
+          {/* TODO: Replace with dedicated AnalyticsDashboard component when built */}
+          <Route path="analytics" element={<Navigate to="/admin" replace />} />
           <Route path="qr" element={<SuspenseWrapper><QRManagement /></SuspenseWrapper>} />
           <Route path="settings" element={<SuspenseWrapper><SettingsPage /></SuspenseWrapper>} />
         </Route>

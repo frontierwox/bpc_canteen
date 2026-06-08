@@ -1,48 +1,55 @@
-import Bill from '../models/Bill.model.js';
-import Customer from '../models/Customer.model.js';
-import MenuItem from '../models/MenuItem.model.js';
-import Settings from '../models/Settings.model.js';
-import ApiError from '../utils/ApiError.js';
+import Bill     from '../models/Bill.model.js';
+import Customer  from '../models/Customer.model.js';
+import MenuItem  from '../models/MenuItem.model.js';
+import Settings  from '../models/Settings.model.js';
+import mongoose  from 'mongoose';
+import ApiError  from '../utils/ApiError.js';
 import ApiResponse from '../utils/ApiResponse.js';
 import asyncHandler from '../utils/asyncHandler.js';
 import { generateInvoiceNumber } from '../utils/invoiceNumber.js';
-import { generateBillPDF } from '../services/pdf.service.js';
+import { generateBillPDF }       from '../services/pdf.service.js';
+import { calculateGST }          from '../utils/gstCalculator.js';
+import escapeRegex from '../utils/escapeRegex.js';
 
+// ─── GET /api/v1/bills ────────────────────────────────────────────────────────
 /**
- * GET /api/v1/bills
- * Admin: all bills. Employee: only own bills. Supports filters.
+ * Returns paginated bills with optional filters.
+ * Admin sees all bills; employees see only their own.
  */
 export const getAllBills = asyncHandler(async (req, res) => {
   const {
-    search, customer, billType, paymentStatus, startDate, endDate,
-    page = 1, limit = 20, sortBy = 'createdAt', order = 'desc',
+    search, customer, billType, paymentStatus,
+    startDate, endDate,
+    page = 1, limit = 20,
+    sortBy = 'createdAt', order = 'desc',
   } = req.query;
 
   const filter = { isVoid: false };
 
-  // Employee sees only their own bills
+  // Employees are scoped to their own bills only
   if (req.user.role === 'employee') {
     filter.createdBy = req.user._id;
   }
 
   if (search) {
+    const safe = escapeRegex(search);
     filter.$or = [
-      { billNumber: { $regex: search, $options: 'i' } },
-      { notes: { $regex: search, $options: 'i' } },
+      { billNumber: { $regex: safe, $options: 'i' } },
+      { notes:      { $regex: safe, $options: 'i' } },
     ];
   }
 
-  if (customer) filter.customer = customer;
-  if (billType) filter.billType = billType;
-  if (paymentStatus) filter.paymentStatus = paymentStatus;
+  if (customer)       filter.customer      = customer;
+  if (billType)       filter.billType      = billType;
+  if (paymentStatus)  filter.paymentStatus = paymentStatus;
 
   if (startDate || endDate) {
     filter.billDate = {};
     if (startDate) filter.billDate.$gte = new Date(startDate);
-    if (endDate) filter.billDate.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+    if (endDate)   filter.billDate.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
   }
 
-  const skip = (Number(page) - 1) * Number(limit);
+  const skip      = (Number(page) - 1) * Number(limit);
   const sortOrder = order === 'asc' ? 1 : -1;
 
   const [bills, total] = await Promise.all([
@@ -61,7 +68,7 @@ export const getAllBills = asyncHandler(async (req, res) => {
       bills,
       pagination: {
         total,
-        page: Number(page),
+        page:  Number(page),
         limit: Number(limit),
         pages: Math.ceil(total / Number(limit)),
       },
@@ -69,36 +76,40 @@ export const getAllBills = asyncHandler(async (req, res) => {
   );
 });
 
+// ─── GET /api/v1/bills/:id ────────────────────────────────────────────────────
 /**
- * GET /api/v1/bills/:id
- * Returns full bill detail with populated references.
+ * Returns full bill detail with all populated references.
+ * Employees may only view their own bills.
  */
 export const getBillById = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id)
-    .populate('customer', 'name organization department phone email address accountType')
+    .populate('customer',  'name organization department phone email address accountType')
     .populate('createdBy', 'name email')
-    .populate('voidedBy', 'name email')
+    .populate('voidedBy',  'name email')
     .lean();
 
   if (!bill) {
     throw new ApiError(404, 'Bill not found');
   }
 
-  // Employee can only view their own bills
-  if (req.user.role === 'employee' && bill.createdBy._id.toString() !== req.user._id.toString()) {
+  // Employees can only see their own bills
+  if (
+    req.user.role === 'employee' &&
+    bill.createdBy?._id?.toString() !== req.user._id.toString()
+  ) {
     throw new ApiError(403, 'You can only view your own bills.');
   }
 
   res.status(200).json(new ApiResponse(200, bill, 'Bill fetched successfully'));
 });
 
+// ─── GET /api/v1/bills/:id/pdf ────────────────────────────────────────────────
 /**
- * GET /api/v1/bills/:id/pdf
- * Generates and downloads the bill as a PDF.
+ * Generates and streams the bill as an inline PDF.
  */
 export const getBillPDF = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id)
-    .populate('customer', 'name organization department phone email address accountType')
+    .populate('customer',  'name organization department phone email address accountType')
     .populate('createdBy', 'name')
     .lean();
 
@@ -107,22 +118,23 @@ export const getBillPDF = asyncHandler(async (req, res) => {
   }
 
   const settings = await Settings.getSettings();
-
-  const pdfType = bill.billType === 'monthly_credit' ? 'monthly' : 'invoice';
+  const pdfType   = bill.billType === 'monthly_credit' ? 'monthly' : 'invoice';
   const pdfBuffer = await generateBillPDF(bill, settings, pdfType);
 
   res.set({
-    'Content-Type': 'application/pdf',
+    'Content-Type':        'application/pdf',
     'Content-Disposition': `inline; filename="${bill.billNumber}.pdf"`,
-    'Content-Length': pdfBuffer.length,
+    'Content-Length':      pdfBuffer.length,
   });
 
   res.send(pdfBuffer);
 });
 
+// ─── GET /api/v1/bills/customer/:customerId ───────────────────────────────────
 /**
- * GET /api/v1/bills/customer/:customerId
- * Returns all bills for a specific customer.
+ * Returns all non-voided bills for a specific customer.
+ * NOTE: This route MUST be registered before GET /:id in the router
+ * to prevent "customer" being matched as a bill ObjectId.
  */
 export const getCustomerBills = asyncHandler(async (req, res) => {
   const { startDate, endDate, billType, paymentStatus, page = 1, limit = 50 } = req.query;
@@ -134,12 +146,13 @@ export const getCustomerBills = asyncHandler(async (req, res) => {
 
   const filter = { customer: req.params.customerId, isVoid: false };
 
-  if (billType) filter.billType = billType;
+  if (billType)      filter.billType      = billType;
   if (paymentStatus) filter.paymentStatus = paymentStatus;
+
   if (startDate || endDate) {
     filter.billDate = {};
     if (startDate) filter.billDate.$gte = new Date(startDate);
-    if (endDate) filter.billDate.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
+    if (endDate)   filter.billDate.$lte = new Date(new Date(endDate).setHours(23, 59, 59, 999));
   }
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -160,7 +173,7 @@ export const getCustomerBills = asyncHandler(async (req, res) => {
       bills,
       pagination: {
         total,
-        page: Number(page),
+        page:  Number(page),
         limit: Number(limit),
         pages: Math.ceil(total / Number(limit)),
       },
@@ -168,9 +181,11 @@ export const getCustomerBills = asyncHandler(async (req, res) => {
   );
 });
 
+// ─── POST /api/v1/bills ───────────────────────────────────────────────────────
 /**
- * POST /api/v1/bills
- * Creates a new bill. Core billing logic — handles immediate and monthly credit.
+ * Creates a new bill.
+ * Handles both immediate (cash/UPI) and monthly-credit bill types.
+ * Snapshots menu item prices at the time of billing.
  */
 export const createBill = asyncHandler(async (req, res) => {
   const {
@@ -188,108 +203,129 @@ export const createBill = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Cannot create bill for inactive customer.');
   }
 
-  // Validate items
   if (!items || !Array.isArray(items) || items.length === 0) {
     throw new ApiError(400, 'At least one item is required.');
   }
 
-  // Fetch settings for tax rate default
   const settings = await Settings.getSettings();
 
-  // Build bill items with price snapshots
+  // ── Build bill items with price snapshots ─────────────────────────────────
   const billItems = [];
+
   for (const item of items) {
-    let menuItem = null;
+    let menuItem  = null;
     let unitPrice = item.unitPrice;
-    let name = item.name;
-    let unit = item.unit || 'NOS';
+    let name      = item.name;
+    let unit      = item.unit || 'NOS';
 
     if (item.menuItem) {
       menuItem = await MenuItem.findById(item.menuItem);
       if (menuItem) {
-        name = menuItem.name;
-        unit = menuItem.unit;
-        // Use effective price (considers special pricing)
+        name      = menuItem.name;
+        unit      = menuItem.unit;
         unitPrice = getEffectivePrice(menuItem);
       }
     }
 
-    if (!name || !unitPrice || !item.quantity) {
-      throw new ApiError(400, `Invalid item data: name, quantity, and price are required.`);
+    if (!name) {
+      throw new ApiError(400, 'Each item must have a name.');
     }
 
     const quantity = Number(item.quantity);
-    const price = Number(unitPrice);
+    const price    = Number(unitPrice);
+
+    // Validate price — must be a positive number
+    if (isNaN(price) || price <= 0) {
+      throw new ApiError(400, `Item "${name}" must have a positive unit price.`);
+    }
+
+    if (!quantity || quantity < 1) {
+      throw new ApiError(400, `Item "${name}" must have a quantity of at least 1.`);
+    }
 
     billItems.push({
-      menuItem: menuItem?._id || item.menuItem,
+      menuItem:   menuItem?._id || item.menuItem,
       name,
       quantity,
       unit,
-      unitPrice: price,
+      unitPrice:  price,
       totalPrice: Math.round(quantity * price * 100) / 100,
     });
   }
 
-  // Calculate totals
-  const subtotal = billItems.reduce((sum, item) => sum + item.totalPrice, 0);
-  const effectiveTaxRate = taxRate !== undefined ? Number(taxRate) : settings.defaultTaxRate;
-  const taxAmount = Math.round(subtotal * (effectiveTaxRate / 100) * 100) / 100;
-  const discount = discountAmount ? Number(discountAmount) : 0;
-  const totalAmount = Math.round((subtotal + taxAmount - discount) * 100) / 100;
+  // ── Financial calculations using centralized GST calculator ────────────────
+  const subtotal  = billItems.reduce((sum, i) => sum + i.totalPrice, 0);
+  const cgstRate  = req.body.cgst !== undefined ? Number(req.body.cgst) : settings.defaultCGSTRate;
+  const sgstRate  = req.body.sgst !== undefined ? Number(req.body.sgst) : settings.defaultSGSTRate;
+  const discount  = discountAmount ? Number(discountAmount) : 0;
 
-  // Generate unique bill number
+  const gst = calculateGST(subtotal, cgstRate, sgstRate, discount);
+
   const billNumber = await generateInvoiceNumber();
 
-  // Determine payment status based on bill type
-  let paymentStatus = 'paid';
-  let paidAmount = totalAmount;
-  let balanceDue = 0;
+  // ── Payment status by bill type ───────────────────────────────────────────
+  let paymentStatus;
+  let paidAmount;
+  let balanceDue;
 
   if (billType === 'monthly_credit') {
     paymentStatus = 'pending';
-    paidAmount = 0;
-    balanceDue = totalAmount;
+    paidAmount    = 0;
+    balanceDue    = gst.totalAmount;
+  } else {
+    paymentStatus = 'paid';
+    paidAmount    = gst.totalAmount;
+    balanceDue    = 0;
   }
 
   const bill = await Bill.create({
     billNumber,
-    customer: customerId,
-    createdBy: req.user._id,
+    customer:    customerId,
+    createdBy:   req.user._id,
     billType,
-    billDate: new Date(),
-    serviceDate: serviceDate ? new Date(serviceDate) : (billType === 'monthly_credit' ? new Date() : undefined),
-    items: billItems,
-    subtotal,
-    taxRate: effectiveTaxRate,
-    taxAmount,
-    discountAmount: discount,
-    totalAmount,
+    billDate:    new Date(),
+    serviceDate: serviceDate
+      ? new Date(serviceDate)
+      : billType === 'monthly_credit' ? new Date() : undefined,
+    items:          billItems,
+    subtotal:       gst.subtotal,
+    taxRate:        gst.taxRate,
+    taxAmount:      gst.taxAmount,
+    cgst:           gst.cgstRate,
+    sgst:           gst.sgstRate,
+    cgstAmount:     gst.cgstAmount,
+    sgstAmount:     gst.sgstAmount,
+    discountAmount: gst.discount,
+    totalAmount:    gst.totalAmount,
     paymentStatus,
     paidAmount,
     balanceDue,
-    paymentMethod: billType === 'monthly_credit' ? 'credit' : (paymentMethod || 'cash'),
+    paymentMethod: billType === 'monthly_credit'
+      ? 'credit'
+      : (paymentMethod || 'cash'),
     notes,
+    settlementDetails: req.body.settlementDetails || undefined,
   });
 
-  // Update customer outstanding balance for credit bills
+  // Increment customer outstanding balance for credit bills
   if (billType === 'monthly_credit') {
     await Customer.findByIdAndUpdate(customerId, {
-      $inc: { outstandingBalance: totalAmount },
+      $inc: { outstandingBalance: gst.totalAmount },
     });
   }
 
-  // Populate for response
   const populatedBill = await Bill.findById(bill._id)
-    .populate('customer', 'name organization department accountType')
+    .populate('customer',  'name organization department accountType')
     .populate('createdBy', 'name email');
 
   res.status(201).json(new ApiResponse(201, populatedBill, 'Bill created successfully'));
 });
 
+// ─── PUT /api/v1/bills/:id ────────────────────────────────────────────────────
 /**
- * PUT /api/v1/bills/:id
- * Updates a bill (only if not yet finalized/paid).
+ * Updates a bill's items, tax, discount, notes, or service date.
+ * Correctly recalculates only the UNPAID portion of the balance difference
+ * to avoid double-counting partial payments in customer outstanding balance.
  */
 export const updateBill = asyncHandler(async (req, res) => {
   const bill = await Bill.findById(req.params.id);
@@ -301,8 +337,10 @@ export const updateBill = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Cannot edit a voided bill.');
   }
 
-  // Only admin can edit any bill; employee can only edit their own
-  if (req.user.role === 'employee' && bill.createdBy.toString() !== req.user._id.toString()) {
+  if (
+    req.user.role === 'employee' &&
+    bill.createdBy.toString() !== req.user._id.toString()
+  ) {
     throw new ApiError(403, 'You can only edit your own bills.');
   }
 
@@ -310,37 +348,54 @@ export const updateBill = asyncHandler(async (req, res) => {
 
   if (items && Array.isArray(items) && items.length > 0) {
     const billItems = [];
+
     for (const item of items) {
-      const quantity = Number(item.quantity);
+      const quantity  = Number(item.quantity);
       const unitPrice = Number(item.unitPrice);
+
+      if (isNaN(unitPrice) || unitPrice <= 0) {
+        throw new ApiError(400, `Item "${item.name || 'unknown'}" must have a positive unit price.`);
+      }
+      if (!quantity || quantity < 1) {
+        throw new ApiError(400, `Item "${item.name || 'unknown'}" must have a quantity of at least 1.`);
+      }
+
       billItems.push({
-        menuItem: item.menuItem,
-        name: item.name,
+        menuItem:   item.menuItem,
+        name:       item.name,
         quantity,
-        unit: item.unit || 'NOS',
+        unit:       item.unit || 'NOS',
         unitPrice,
         totalPrice: Math.round(quantity * unitPrice * 100) / 100,
       });
     }
 
-    // Recalculate the old total for balance adjustment
-    const oldTotal = bill.totalAmount;
+    // Capture the old unpaid (balance-due) portion before recalculating
+    const oldBalanceDue = Math.max(0, bill.totalAmount - bill.paidAmount);
 
-    bill.items = billItems;
+    bill.items    = billItems;
     bill.subtotal = billItems.reduce((sum, i) => sum + i.totalPrice, 0);
 
-    const effectiveTaxRate = taxRate !== undefined ? Number(taxRate) : bill.taxRate;
-    bill.taxRate = effectiveTaxRate;
-    bill.taxAmount = Math.round(bill.subtotal * (effectiveTaxRate / 100) * 100) / 100;
-
+    const cgstRate = taxRate !== undefined ? Number(taxRate) / 2 : bill.cgst;
+    const sgstRate = taxRate !== undefined ? Number(taxRate) / 2 : bill.sgst;
     const discount = discountAmount !== undefined ? Number(discountAmount) : bill.discountAmount;
-    bill.discountAmount = discount;
-    bill.totalAmount = Math.round((bill.subtotal + bill.taxAmount - discount) * 100) / 100;
-    bill.balanceDue = Math.max(0, bill.totalAmount - bill.paidAmount);
 
-    // Adjust customer outstanding balance if credit bill total changed
+    const gst = calculateGST(bill.subtotal, cgstRate, sgstRate, discount);
+
+    bill.taxRate        = gst.taxRate;
+    bill.taxAmount      = gst.taxAmount;
+    bill.cgst           = gst.cgstRate;
+    bill.sgst           = gst.sgstRate;
+    bill.cgstAmount     = gst.cgstAmount;
+    bill.sgstAmount     = gst.sgstAmount;
+    bill.discountAmount = gst.discount;
+    bill.totalAmount    = gst.totalAmount;
+    bill.balanceDue     = Math.max(0, bill.totalAmount - bill.paidAmount);
+
+    // Adjust customer outstanding by the change in UNPAID portion only
     if (bill.billType === 'monthly_credit') {
-      const diff = bill.totalAmount - oldTotal;
+      const newBalanceDue = bill.balanceDue;
+      const diff          = newBalanceDue - oldBalanceDue;
       if (diff !== 0) {
         await Customer.findByIdAndUpdate(bill.customer, {
           $inc: { outstandingBalance: diff },
@@ -349,21 +404,23 @@ export const updateBill = asyncHandler(async (req, res) => {
     }
   }
 
-  if (notes !== undefined) bill.notes = notes;
-  if (serviceDate) bill.serviceDate = new Date(serviceDate);
+  if (notes !== undefined)       bill.notes             = notes;
+  if (serviceDate)               bill.serviceDate       = new Date(serviceDate);
+  if (req.body.settlementDetails) bill.settlementDetails = req.body.settlementDetails;
 
   await bill.save();
 
   const populatedBill = await Bill.findById(bill._id)
-    .populate('customer', 'name organization department')
+    .populate('customer',  'name organization department')
     .populate('createdBy', 'name email');
 
   res.status(200).json(new ApiResponse(200, populatedBill, 'Bill updated successfully'));
 });
 
+// ─── PUT /api/v1/bills/:id/payment ───────────────────────────────────────────
 /**
- * PUT /api/v1/bills/:id/payment
- * Records a payment against a bill.
+ * Records a full or partial payment against a bill.
+ * Updates paymentStatus automatically based on remaining balance.
  */
 export const recordPayment = asyncHandler(async (req, res) => {
   const { amount, paymentMethod } = req.body;
@@ -372,51 +429,78 @@ export const recordPayment = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Payment amount must be greater than zero.');
   }
 
-  const bill = await Bill.findById(req.params.id);
-  if (!bill) {
-    throw new ApiError(404, 'Bill not found');
-  }
+  // Use MongoDB transaction for atomicity — bill save + customer balance update
+  const session = await mongoose.startSession();
 
-  if (bill.isVoid) {
-    throw new ApiError(400, 'Cannot record payment for a voided bill.');
-  }
+  try {
+    let populatedBill;
 
-  const paymentAmount = Number(amount);
+    await session.withTransaction(async () => {
+      const bill = await Bill.findById(req.params.id).session(session);
+      if (!bill) {
+        throw new ApiError(404, 'Bill not found');
+      }
 
-  if (paymentAmount > bill.balanceDue) {
-    throw new ApiError(400, `Payment amount (₹${paymentAmount}) exceeds balance due (₹${bill.balanceDue}).`);
-  }
+      if (bill.isVoid) {
+        throw new ApiError(400, 'Cannot record payment for a voided bill.');
+      }
 
-  bill.paidAmount += paymentAmount;
-  bill.balanceDue = Math.max(0, bill.totalAmount - bill.paidAmount);
+      if (bill.paymentStatus === 'paid') {
+        throw new ApiError(400, 'Bill is already fully paid.');
+      }
 
-  if (bill.balanceDue === 0) {
-    bill.paymentStatus = 'paid';
-  } else {
-    bill.paymentStatus = 'partial';
-  }
+      const paymentAmount = Number(amount);
 
-  if (paymentMethod) bill.paymentMethod = paymentMethod;
+      if (paymentAmount > bill.balanceDue) {
+        throw new ApiError(
+          400,
+          `Payment amount (₹${paymentAmount}) exceeds balance due (₹${bill.balanceDue}).`
+        );
+      }
 
-  await bill.save({ validateBeforeSave: false });
+      // Validate paymentMethod against model enum if provided
+      const allowedMethods = ['cash', 'upi', 'bank_transfer', 'credit', 'other'];
+      if (paymentMethod && !allowedMethods.includes(paymentMethod)) {
+        throw new ApiError(400, `Invalid payment method. Allowed: ${allowedMethods.join(', ')}.`);
+      }
 
-  // Update customer outstanding balance
-  if (bill.billType === 'monthly_credit') {
-    await Customer.findByIdAndUpdate(bill.customer, {
-      $inc: { outstandingBalance: -paymentAmount },
+      bill.paidAmount += paymentAmount;
+      bill.balanceDue  = Math.max(0, bill.totalAmount - bill.paidAmount);
+
+      bill.paymentStatus =
+        bill.balanceDue === 0 ? 'paid'
+        : bill.paidAmount > 0 ? 'partial'
+        : 'pending';
+
+      if (paymentMethod) bill.paymentMethod = paymentMethod;
+
+      await bill.save({ session });
+
+      // Reduce customer outstanding balance for credit bills
+      if (bill.billType === 'monthly_credit') {
+        await Customer.findByIdAndUpdate(
+          bill.customer,
+          { $inc: { outstandingBalance: -paymentAmount } },
+          { session }
+        );
+      }
+
+      populatedBill = await Bill.findById(bill._id)
+        .populate('customer', 'name organization')
+        .populate('createdBy', 'name')
+        .session(session);
     });
+
+    res.status(200).json(new ApiResponse(200, populatedBill, 'Payment recorded successfully'));
+  } finally {
+    await session.endSession();
   }
-
-  const populatedBill = await Bill.findById(bill._id)
-    .populate('customer', 'name organization')
-    .populate('createdBy', 'name');
-
-  res.status(200).json(new ApiResponse(200, populatedBill, 'Payment recorded successfully'));
 });
 
+// ─── DELETE /api/v1/bills/:id/void ───────────────────────────────────────────
 /**
- * DELETE /api/v1/bills/:id/void
- * Voids/cancels a bill (admin only).
+ * Voids (cancels) a bill. Admin only.
+ * Reverses only the unpaid portion of a credit bill's outstanding balance.
  */
 export const voidBill = asyncHandler(async (req, res) => {
   const { reason } = req.body;
@@ -430,17 +514,17 @@ export const voidBill = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Bill is already voided.');
   }
 
-  // Reverse outstanding balance if it was a credit bill
+  // Reverse only the balance still outstanding (not amounts already paid)
   if (bill.billType === 'monthly_credit' && bill.balanceDue > 0) {
     await Customer.findByIdAndUpdate(bill.customer, {
       $inc: { outstandingBalance: -bill.balanceDue },
     });
   }
 
-  bill.isVoid = true;
-  bill.voidReason = reason || 'No reason provided';
-  bill.voidedBy = req.user._id;
-  bill.voidedAt = new Date();
+  bill.isVoid        = true;
+  bill.voidReason    = reason || 'No reason provided';
+  bill.voidedBy      = req.user._id;
+  bill.voidedAt      = new Date();
   bill.paymentStatus = 'cancelled';
 
   await bill.save({ validateBeforeSave: false });
@@ -448,12 +532,19 @@ export const voidBill = asyncHandler(async (req, res) => {
   res.status(200).json(new ApiResponse(200, null, 'Bill voided successfully'));
 });
 
-// ─── Helper ─────────────────────────────────────────────────────
+// ─── Helper ───────────────────────────────────────────────────────────────────
 
+/**
+ * Returns the effective selling price for a menu item.
+ * Uses the special price when it is active and within its valid date range.
+ *
+ * @param {Object} menuItem - Mongoose MenuItem document (plain object)
+ * @returns {number} The price to charge
+ */
 function getEffectivePrice(menuItem) {
   if (menuItem.specialPrice?.isActive && menuItem.specialPrice?.price != null) {
-    const now = new Date();
-    const from = menuItem.specialPrice.validFrom;
+    const now   = new Date();
+    const from  = menuItem.specialPrice.validFrom;
     const until = menuItem.specialPrice.validUntil;
     if ((!from || now >= from) && (!until || now <= until)) {
       return menuItem.specialPrice.price;

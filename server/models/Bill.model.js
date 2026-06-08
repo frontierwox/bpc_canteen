@@ -34,6 +34,30 @@ const billItemSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const settlementDetailsSchema = new mongoose.Schema(
+  {
+    settledByName: {
+      type: String,
+      trim: true,
+      maxlength: [150, 'Name cannot exceed 150 characters'],
+    },
+    settledByPhone: {
+      type: String,
+      trim: true,
+    },
+    settledByCompany: {
+      type: String,
+      trim: true,
+      maxlength: [200, 'Company name cannot exceed 200 characters'],
+    },
+    settledByCustomerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Customer',
+    },
+  },
+  { _id: false }
+);
+
 const billSchema = new mongoose.Schema(
   {
     billNumber: {
@@ -84,6 +108,28 @@ const billSchema = new mongoose.Schema(
       default: 0,
       min: [0, 'Tax amount cannot be negative'],
     },
+    cgst: {
+      type: Number,
+      default: 0,
+      min: [0, 'CGST rate cannot be negative'],
+      max: [50, 'CGST rate cannot exceed 50%'],
+    },
+    sgst: {
+      type: Number,
+      default: 0,
+      min: [0, 'SGST rate cannot be negative'],
+      max: [50, 'SGST rate cannot exceed 50%'],
+    },
+    cgstAmount: {
+      type: Number,
+      default: 0,
+      min: [0, 'CGST amount cannot be negative'],
+    },
+    sgstAmount: {
+      type: Number,
+      default: 0,
+      min: [0, 'SGST amount cannot be negative'],
+    },
     discountAmount: {
       type: Number,
       default: 0,
@@ -129,6 +175,7 @@ const billSchema = new mongoose.Schema(
       trim: true,
       maxlength: [1000, 'Notes cannot exceed 1000 characters'],
     },
+    settlementDetails: settlementDetailsSchema,
     isVoid: {
       type: Boolean,
       default: false,

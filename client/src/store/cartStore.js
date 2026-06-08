@@ -12,6 +12,9 @@ const useCartStore = create((set, get) => ({
   serviceDate: null,
   notes: '',
   paymentMethod: 'cash',
+  settledByName: '',
+  settledByPhone: '',
+  settledByCompany: '',
 
   /**
    * Add item to cart or increment quantity if already exists.
@@ -48,10 +51,22 @@ const useCartStore = create((set, get) => ({
     set({ items: get().items.filter((_, i) => i !== index) });
   },
 
+  /**
+   * Update item quantity at the given index.
+   * Floors to integer and prevents negative values.
+   * Automatically removes the item when quantity reaches zero.
+   */
   updateQuantity: (index, quantity) => {
-    const qty = Number(quantity) || 0;
+    const qty = Math.max(0, Math.floor(Number(quantity)) || 0);
+
+    if (qty === 0) {
+      // Remove the item entirely — a zero-quantity line item is invalid
+      set({ items: get().items.filter((_, i) => i !== index) });
+      return;
+    }
+
     const updated = [...get().items];
-    updated[index].quantity = qty;
+    updated[index].quantity   = qty;
     updated[index].totalPrice = qty * updated[index].unitPrice;
     set({ items: updated });
   },
@@ -60,16 +75,22 @@ const useCartStore = create((set, get) => ({
    * Set customer for the bill.
    */
   setCustomer: (customerId, customerData) => {
-    set({ customerId, customerData });
-    if (customerData?.accountType === 'monthly_credit') {
-      set({ billType: 'monthly_credit', paymentMethod: 'credit' });
-    }
+    const isCreditAccount = customerData?.accountType === 'monthly_credit';
+    set({
+      customerId,
+      customerData,
+      ...(isCreditAccount && { billType: 'monthly_credit', paymentMethod: 'credit' }),
+    });
   },
 
   setBillType: (billType) => set({ billType }),
   setServiceDate: (serviceDate) => set({ serviceDate }),
   setNotes: (notes) => set({ notes }),
   setPaymentMethod: (paymentMethod) => set({ paymentMethod }),
+  
+  setSettledByName: (settledByName) => set({ settledByName }),
+  setSettledByPhone: (settledByPhone) => set({ settledByPhone }),
+  setSettledByCompany: (settledByCompany) => set({ settledByCompany }),
 
   /**
    * Calculate subtotal from all items.
@@ -92,6 +113,9 @@ const useCartStore = create((set, get) => ({
     serviceDate: null,
     notes: '',
     paymentMethod: 'cash',
+    settledByName: '',
+    settledByPhone: '',
+    settledByCompany: '',
   }),
 }));
 

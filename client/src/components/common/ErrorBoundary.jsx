@@ -12,6 +12,9 @@ class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
+    // TODO: Integrate an error-reporting service (e.g., Sentry, LogRocket)
+    // to capture errors in production. Example:
+    //   Sentry.captureException(error, { extra: errorInfo });
     console.error('ErrorBoundary caught:', error, errorInfo);
   }
 

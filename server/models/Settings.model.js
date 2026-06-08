@@ -82,6 +82,18 @@ const settingsSchema = new mongoose.Schema(
       min: [0, 'Tax rate cannot be negative'],
       max: [100, 'Tax rate cannot exceed 100%'],
     },
+    defaultCGSTRate: {
+      type: Number,
+      default: 2.5,
+      min: [0, 'CGST rate cannot be negative'],
+      max: [50, 'CGST rate cannot exceed 50%'],
+    },
+    defaultSGSTRate: {
+      type: Number,
+      default: 2.5,
+      min: [0, 'SGST rate cannot be negative'],
+      max: [50, 'SGST rate cannot exceed 50%'],
+    },
     invoicePrefix: {
       type: String,
       default: 'BPC',
@@ -94,6 +106,11 @@ const settingsSchema = new mongoose.Schema(
       min: 0,
     },
     statementCounter: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    invoiceGeneratorCounter: {
       type: Number,
       default: 0,
       min: 0,

@@ -32,6 +32,7 @@ const BillDetail = () => {
   const [showPayment, setShowPayment] = useState(false);
   const [showVoid, setShowVoid] = useState(false);
   const [payAmount, setPayAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [voidReason, setVoidReason] = useState('');
 
   const { data: bill, isLoading } = useQuery({ queryKey: ['bill', id], queryFn: () => billAPI.getById(id).then((r) => r.data.data) });
@@ -108,6 +109,14 @@ const BillDetail = () => {
                   <p>{c.phone}</p>
                 </div>
               )}
+              {bill.settlementDetails?.settledByName && (
+                <div className="mt-4 pt-4 border-t border-[rgba(123,28,28,0.05)]">
+                  <p className="text-[11px] font-medium text-[#9A7A7A] uppercase tracking-wider mb-2">Settlement Details</p>
+                  <p className="text-[13px] font-medium text-[#1A0505]">{bill.settlementDetails.settledByName}</p>
+                  {bill.settlementDetails.settledByPhone && <p className="text-[12px] text-[#5A3A3A] mt-0.5">Ph: {bill.settlementDetails.settledByPhone}</p>}
+                  {bill.settlementDetails.settledByCompany && <p className="text-[12px] text-[#5A3A3A] mt-0.5">Co: {bill.settlementDetails.settledByCompany}</p>}
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -131,7 +140,19 @@ const BillDetail = () => {
                 <span className="text-[#5A3A3A]">Subtotal</span>
                 <span className="font-medium text-[#1A0505]">{formatINR(bill.subtotal)}</span>
               </div>
-              {bill.taxAmount > 0 && (
+              {bill.cgstAmount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[#5A3A3A]">CGST ({bill.cgst}%)</span>
+                  <span className="font-medium text-[#1A0505]">{formatINR(bill.cgstAmount)}</span>
+                </div>
+              )}
+              {bill.sgstAmount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-[#5A3A3A]">SGST ({bill.sgst}%)</span>
+                  <span className="font-medium text-[#1A0505]">{formatINR(bill.sgstAmount)}</span>
+                </div>
+              )}
+              {bill.taxAmount > 0 && !bill.cgstAmount && !bill.sgstAmount && (
                 <div className="flex justify-between">
                   <span className="text-[#5A3A3A]">Tax ({bill.taxRate}%)</span>
                   <span className="font-medium text-[#1A0505]">{formatINR(bill.taxAmount)}</span>
@@ -241,9 +262,18 @@ const BillDetail = () => {
                 <label className="form-label">Payment Amount (₹)</label>
                 <input type="number" step="0.01" max={bill.balanceDue} value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="form-input text-lg font-mono font-bold" autoFocus />
               </div>
+              <div>
+                <label className="form-label">Payment Method</label>
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="form-input">
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="card">Card</option>
+                </select>
+              </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowPayment(false)} className="flex-1 px-4 py-3 text-[14px] font-medium text-[#5A3A3A] bg-surface-card border border-[rgba(123,28,28,0.1)] rounded-xl hover:bg-maroon-50 transition-colors">Cancel</button>
-                <button onClick={() => paymentMut.mutate({ amount: Number(payAmount) })} disabled={paymentMut.isPending || !payAmount || Number(payAmount) <= 0} className="flex-1 btn-primary w-full justify-center">
+                <button onClick={() => paymentMut.mutate({ amount: Number(payAmount), paymentMethod })} disabled={paymentMut.isPending || !payAmount || Number(payAmount) <= 0} className="flex-1 btn-primary w-full justify-center">
                   {paymentMut.isPending ? 'Processing...' : 'Record Payment'}
                 </button>
               </div>

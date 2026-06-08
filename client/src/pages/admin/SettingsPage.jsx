@@ -23,7 +23,10 @@ const SettingsPage = () => {
     updateMut.mutate({
       businessName: s.businessName, tagline: s.tagline, gstin: s.gstin, fssai: s.fssai,
       address: s.address, phone1: s.phone1, phone2: s.phone2, email: s.email,
-      defaultTaxRate: s.defaultTaxRate, invoicePrefix: s.invoicePrefix,
+      defaultTaxRate: s.defaultTaxRate,
+      defaultCGSTRate: s.defaultCGSTRate,
+      defaultSGSTRate: s.defaultSGSTRate,
+      invoicePrefix: s.invoicePrefix,
       bankDetails: s.bankDetails,
     });
   };
@@ -145,11 +148,20 @@ const SettingsPage = () => {
               <h2 className="text-lg font-bold text-[#1A0505] font-display">Invoice Settings</h2>
             </div>
             <div className="p-6 space-y-5">
-              <div><label className="form-label">Default Tax Rate (%)</label><input type="number" step="0.01" value={s.defaultTaxRate ?? 0} onChange={(e) => update('defaultTaxRate', e.target.value)} className="form-input w-full" /></div>
+              <div><label className="form-label">Default Tax Rate (%) <span className="text-[10px] text-[#9A7A7A] ml-2 font-normal">(Used for Canteen Bills)</span></label><input type="number" step="0.01" value={s.defaultTaxRate ?? 0} onChange={(e) => update('defaultTaxRate', e.target.value)} className="form-input w-full" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="form-label">CGST Rate (%)</label><input type="number" step="0.01" value={s.defaultCGSTRate ?? 0} onChange={(e) => update('defaultCGSTRate', e.target.value)} className="form-input w-full" /></div>
+                <div><label className="form-label">SGST Rate (%)</label><input type="number" step="0.01" value={s.defaultSGSTRate ?? 0} onChange={(e) => update('defaultSGSTRate', e.target.value)} className="form-input w-full" /></div>
+              </div>
+              <p className="text-[11px] text-info-text bg-info-bg/50 px-3 py-2 rounded-lg -mt-3">CGST & SGST are used in the standalone Invoice Generator.</p>
               <div><label className="form-label">Invoice Prefix</label><input value={s.invoicePrefix || ''} onChange={(e) => update('invoicePrefix', e.target.value)} className="form-input w-full" /></div>
               <div>
-                <label className="form-label flex items-center gap-2">Current Counter <span className="text-[10px] bg-info-bg text-info-text px-1.5 py-0.5 rounded uppercase">Auto-increments</span></label>
+                <label className="form-label flex items-center gap-2">Bill Counter <span className="text-[10px] bg-info-bg text-info-text px-1.5 py-0.5 rounded uppercase">Auto-increments</span></label>
                 <input value={s.invoiceCounter || ''} disabled className="form-input w-full bg-surface-page text-[#9A7A7A] cursor-not-allowed" />
+              </div>
+              <div>
+                <label className="form-label flex items-center gap-2">Generator Counter <span className="text-[10px] bg-info-bg text-info-text px-1.5 py-0.5 rounded uppercase">Auto-increments</span></label>
+                <input value={s.invoiceGeneratorCounter || ''} disabled className="form-input w-full bg-surface-page text-[#9A7A7A] cursor-not-allowed" />
               </div>
             </div>
           </motion.div>

@@ -39,3 +39,6 @@ coverage/
 
 # Misc
 .gemini/
+
+# Generated CSS build artifacts
+client/src/output.css

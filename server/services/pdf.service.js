@@ -2,8 +2,8 @@ import puppeteer from 'puppeteer-core';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { buildBillOfSupplyHTML, buildMonthlyStatementHTML } from '../templates/invoiceTemplate.js';
-import { numberToWords as numberToWordsUtil } from '../utils/numberToWords.js';
+import { buildBillOfSupplyHTML, buildMonthlyStatementHTML, buildInvoiceGeneratorHTML } from '../templates/invoiceTemplate.js';
+import { numberToWords as numberToWordsUtil, amountInWordsSimple } from '../utils/numberToWords.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
@@ -40,6 +40,8 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
 
   const html = type === 'monthly'
     ? buildMonthlyStatementPDFHTML(data, settings, logoBase64)
+    : type === 'invoice_generator'
+    ? buildInvoiceGeneratorPDFHTML(data, settings, logoBase64)
     : buildInvoicePDFHTML(data, settings, logoBase64);
 
   let browser;
@@ -198,6 +200,7 @@ const buildMonthlyStatementPDFHTML = (data, settings, logoBase64) => {
     amountInWords,
     logoBase64,
     bankDetails,
+    settlementBy:   data.settlementDetails?.settledByName || '',
   });
 };
 
@@ -247,9 +250,60 @@ const buildInvoicePDFHTML = (data, settings, logoBase64) => {
     items:          templateItems,
     subtotalQty,
     subtotalAmount,
+    cgstRate:       data.cgst || 0,
+    sgstRate:       data.sgst || 0,
+    cgstAmount:     data.cgstAmount || 0,
+    sgstAmount:     data.sgstAmount || 0,
+    grandTotal:     data.totalAmount,
     amountInWords,
     receivedAmount,
     logoBase64,
     bankDetails,
+  });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INVOICE GENERATOR PDF builder (Standalone)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const buildInvoiceGeneratorPDFHTML = (data, settings, logoBase64) => {
+  const customer = data.customer || {};
+  const items    = data.items    || [];
+
+  const formatDate = (d) => {
+    if (!d) return '';
+    const istMs = new Date(d).getTime() + 330 * 60 * 1000;
+    const date  = new Date(istMs);
+    return `${String(date.getUTCDate()).padStart(2,'0')}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${date.getUTCFullYear()}`;
+  };
+
+  const templateItems = items.map((item) => ({
+    name:  item.name,
+    qty:   item.quantity,
+    rate:  item.unitPrice,
+    total: item.totalPrice,
+  }));
+
+  const subtotalQty    = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  const words         = amountInWordsSimple(data.totalAmount);
+
+  return buildInvoiceGeneratorHTML({
+    invoiceNo:      data.invoiceNumber || '',
+    invoiceDate:    formatDate(data.invoiceDate),
+    billTo:         customer.name || '',
+    settlementBy:   data.settlementDetails?.settledByName || '',
+    placeOfSupply:  data.placeOfSupply || 'Tamil Nadu',
+    items:          templateItems,
+    subtotalQty,
+    subtotalAmount: data.subtotal,
+    cgstRate:       data.cgst || 0,
+    sgstRate:       data.sgst || 0,
+    cgstAmount:     data.cgstAmount || 0,
+    sgstAmount:     data.sgstAmount || 0,
+    grandTotal:     data.totalAmount,
+    amountInWords:  words,
+    logoBase64,
+    notes:          data.notes,
   });
 };

@@ -126,6 +126,8 @@ export const generateMonthlyStatement = async (
         totalPrice: item.totalPrice,
       })),
       subtotal:        bill.subtotal,
+      cgstAmount:      bill.cgstAmount || 0,
+      sgstAmount:      bill.sgstAmount || 0,
       taxAmount:       bill.taxAmount || 0,
       discountAmount:  bill.discountAmount || 0,
       amount:          bill.totalAmount,
@@ -238,6 +240,8 @@ export const generateMonthlyStatement = async (
     generatedBy,
     amountInWords:  amountInWords(closingBalance),
     validationReport: report,
+    // Add settlement details from the first bill that has it, if any
+    settlementDetails: bills.find((b) => b.settlementDetails)?.settlementDetails || undefined,
   });
 
   console.log(`${label} Saved as ${statementNumber} (id=${statement._id})`);
