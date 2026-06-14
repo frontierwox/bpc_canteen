@@ -101,11 +101,19 @@ api.interceptors.response.use(
 
     // Only handle 401 once per request
     if (error.response?.status === 401 && !originalRequest._retry) {
-      // Never attempt refresh for auth endpoints — would cause infinite loops
+      // Never attempt refresh for auth endpoints — would cause infinite loops.
+      // Also skip /auth/me — its 401 is handled gracefully by checkAuth() in
+      // the auth store; forcing a redirect here would break public page access.
       if (
         originalRequest.url?.includes('/auth/refresh-token') ||
-        originalRequest.url?.includes('/auth/login')
+        originalRequest.url?.includes('/auth/login') ||
+        originalRequest.url?.includes('/auth/me')
       ) {
+        return Promise.reject(error);
+      }
+
+      // Skip refresh attempts for public API endpoints that don't need auth
+      if (originalRequest.url?.includes('/menu/public')) {
         return Promise.reject(error);
       }
 
@@ -139,9 +147,18 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        // Clear auth state and redirect — session is definitively expired
         clearAccessToken();
-        if (window.location.pathname !== '/login') {
+
+        // Only redirect to login if the user is on a protected page.
+        // Public routes (e.g. /menu, /forgot-password) should never
+        // force a login redirect for unauthenticated visitors.
+        const publicPaths = ['/menu', '/login', '/forgot-password'];
+        const currentPath = window.location.pathname;
+        const isPublicPage = publicPaths.some(
+          (p) => currentPath === p || currentPath.startsWith(p + '/')
+        );
+
+        if (!isPublicPage) {
           window.location.href = '/login?expired=true';
         }
         return Promise.reject(refreshError);
