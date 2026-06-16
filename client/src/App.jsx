@@ -25,6 +25,7 @@ const CategoryManagement = lazy(() => import('./pages/admin/CategoryManagement')
 const CustomerManagement = lazy(() => import('./pages/admin/CustomerManagement'));
 const AllBills = lazy(() => import('./pages/admin/AllBills'));
 const InvoiceGenerator = lazy(() => import('./pages/admin/InvoiceGenerator'));
+const QuotationGenerator = lazy(() => import('./pages/admin/QuotationGenerator'));
 const MonthlyStatements = lazy(() => import('./pages/admin/MonthlyStatements'));
 const CustomerStatement = lazy(() => import('./pages/admin/CustomerStatement'));
 const SettingsPage = lazy(() => import('./pages/admin/SettingsPage'));
@@ -72,6 +73,7 @@ const App = () => {
           <Route path="bills" element={<SuspenseWrapper><AllBills /></SuspenseWrapper>} />
           <Route path="bills/:id" element={<SuspenseWrapper><BillDetail /></SuspenseWrapper>} />
           <Route path="invoice-generator" element={<SuspenseWrapper><InvoiceGenerator /></SuspenseWrapper>} />
+          <Route path="quotation-generator" element={<SuspenseWrapper><QuotationGenerator /></SuspenseWrapper>} />
           <Route path="statements" element={<SuspenseWrapper><MonthlyStatements /></SuspenseWrapper>} />
           <Route path="statements/:id" element={<SuspenseWrapper><CustomerStatement /></SuspenseWrapper>} />
           <Route path="qr" element={<SuspenseWrapper><QRManagement /></SuspenseWrapper>} />

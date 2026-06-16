@@ -115,6 +115,11 @@ const settingsSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    quotationCounter: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     menuQrUrl: {
       type: String,
     },

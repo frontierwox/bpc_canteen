@@ -20,6 +20,7 @@ import statementRoutes from './routes/statement.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import settingsRoutes  from './routes/settings.routes.js';
 import invoiceRoutes   from './routes/invoice.routes.js';
+import quotationRoutes from './routes/quotation.routes.js';
 
 const app = express();
 
@@ -127,6 +128,7 @@ app.use('/api/v1/statements', statementRoutes);
 app.use('/api/v1/analytics',  analyticsRoutes);
 app.use('/api/v1/settings',   settingsRoutes);
 app.use('/api/v1/invoices',   invoiceRoutes);
+app.use('/api/v1/quotations', quotationRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 // NOTE: Do NOT echo req.originalUrl back in the response — it can contain

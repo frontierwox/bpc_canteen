@@ -6,10 +6,11 @@ import {
   ChevronDown, ChevronUp, X, IndianRupee, Building2,
   CalendarDays, Hash, Percent, Tag, Package, User,
   CheckCircle2, AlertCircle, Loader2, RefreshCw,
-  ClipboardList, SlidersHorizontal, Filter,
+  ClipboardList, SlidersHorizontal, Filter, MapPin,
+  ArrowRightLeft, Clock, Shield, FileCheck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { invoiceAPI } from '../../api/invoice.api';
+import { quotationAPI } from '../../api/quotation.api';
 import { customerAPI } from '../../api/customer.api';
 import { settingsAPI } from '../../api/settings.api';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
@@ -17,10 +18,16 @@ import ConfirmDialog from '../../components/common/ConfirmDialog';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const UNIT_OPTIONS = ['NOS', 'KG', 'PLATE', 'BOX', 'LITRE', 'DOZEN', 'PACK'];
 const STATUS_BADGE = {
-  draft: { label: 'Draft', bg: 'bg-gray-100', text: 'text-gray-600' },
-  sent: { label: 'Sent', bg: 'bg-blue-100', text: 'text-blue-700' },
-  paid: { label: 'Paid', bg: 'bg-green-100', text: 'text-green-700' },
+  draft:    { label: 'Draft',    bg: 'bg-gray-100',   text: 'text-gray-600',  icon: FileText },
+  sent:     { label: 'Sent',     bg: 'bg-blue-100',   text: 'text-blue-700',  icon: FileCheck },
+  accepted: { label: 'Accepted', bg: 'bg-green-100',  text: 'text-green-700', icon: CheckCircle2 },
+  rejected: { label: 'Rejected', bg: 'bg-red-100',    text: 'text-red-700',   icon: AlertCircle },
+  expired:  { label: 'Expired',  bg: 'bg-amber-100',  text: 'text-amber-700', icon: Clock },
 };
+
+const DEFAULT_TERMS = `Prices are subject to change without prior notice.
+Payment terms: 50% advance, balance before event.
+Cancellation charges may apply.`;
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 const fmt = (n) =>
@@ -33,6 +40,12 @@ const fmtCompact = (n) =>
   new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(Number(n) || 0);
 
 const today = () => new Date().toISOString().split('T')[0];
+
+const addDays = (dateStr, days) => {
+  const d = new Date(dateStr || Date.now());
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+};
 
 const calcGST = (subtotal, cgst, sgst, discount) => {
   const sub = Math.round((Number(subtotal) || 0) * 100);
@@ -63,14 +76,16 @@ const makeEmptyItem = () => ({
 /** Compact status badge */
 const StatusBadge = ({ status }) => {
   const s = STATUS_BADGE[status] || STATUS_BADGE.draft;
+  const Icon = s.icon;
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold tracking-wide ${s.bg} ${s.text}`}>
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold tracking-wide ${s.bg} ${s.text}`}>
+      <Icon className="w-3 h-3" />
       {s.label}
     </span>
   );
 };
 
-/** Single line-item row inside the form */
+/** Single line-item row (desktop) */
 const ItemRow = ({ item, index, onChange, onRemove, canRemove }) => {
   const total = ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0));
 
@@ -84,18 +99,16 @@ const ItemRow = ({ item, index, onChange, onRemove, canRemove }) => {
       className="group grid gap-2 items-start"
       style={{ gridTemplateColumns: '1fr 80px 90px 110px 100px 36px' }}
     >
-      {/* Item name */}
       <div className="flex flex-col gap-1">
         {index === 0 && <span className="form-label">Description</span>}
         <input
           value={item.name}
           onChange={(e) => onChange(item.id, 'name', e.target.value)}
-          placeholder="e.g. Veg Biryani"
+          placeholder="e.g. Combo Dinner"
           className="form-input text-sm h-10"
         />
       </div>
 
-      {/* Qty */}
       <div className="flex flex-col gap-1">
         {index === 0 && <span className="form-label">Qty</span>}
         <input
@@ -107,7 +120,6 @@ const ItemRow = ({ item, index, onChange, onRemove, canRemove }) => {
         />
       </div>
 
-      {/* Unit */}
       <div className="flex flex-col gap-1">
         {index === 0 && <span className="form-label">Unit</span>}
         <select
@@ -119,7 +131,6 @@ const ItemRow = ({ item, index, onChange, onRemove, canRemove }) => {
         </select>
       </div>
 
-      {/* Rate */}
       <div className="flex flex-col gap-1">
         {index === 0 && <span className="form-label">Rate (₹)</span>}
         <div className="relative">
@@ -136,7 +147,6 @@ const ItemRow = ({ item, index, onChange, onRemove, canRemove }) => {
         </div>
       </div>
 
-      {/* Total */}
       <div className="flex flex-col gap-1">
         {index === 0 && <span className="form-label">Total</span>}
         <div className="h-10 flex items-center justify-end px-3 bg-maroon-50 border border-maroon-100 rounded-lg text-sm font-semibold text-maroon-700 font-mono whitespace-nowrap">
@@ -144,7 +154,6 @@ const ItemRow = ({ item, index, onChange, onRemove, canRemove }) => {
         </div>
       </div>
 
-      {/* Delete */}
       <div className="flex flex-col gap-1">
         {index === 0 && <span className="form-label opacity-0">Del</span>}
         <button
@@ -160,7 +169,7 @@ const ItemRow = ({ item, index, onChange, onRemove, canRemove }) => {
   );
 };
 
-/** Mobile-friendly item card (stacked layout for small screens) */
+/** Mobile item card */
 const ItemCard = ({ item, index, onChange, onRemove, canRemove }) => {
   const total = ((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0));
 
@@ -192,7 +201,7 @@ const ItemCard = ({ item, index, onChange, onRemove, canRemove }) => {
         <input
           value={item.name}
           onChange={(e) => onChange(item.id, 'name', e.target.value)}
-          placeholder="e.g. Veg Biryani"
+          placeholder="e.g. Combo Dinner"
           className="form-input text-sm"
         />
       </div>
@@ -245,7 +254,7 @@ const TotalsBox = ({ subtotal, cgst, sgst, discount, gst }) => (
   <div className="rounded-xl border border-maroon-200 bg-gradient-to-br from-maroon-50 to-white overflow-hidden">
     <div className="px-5 py-3 border-b border-maroon-100 bg-maroon-50/60">
       <h4 className="text-xs font-semibold text-[#5A3A3A] uppercase tracking-widest flex items-center gap-2">
-        <IndianRupee className="w-3.5 h-3.5" /> Amount Summary
+        <IndianRupee className="w-3.5 h-3.5" /> Estimated Amount
       </h4>
     </div>
     <div className="p-5 space-y-2.5">
@@ -272,7 +281,7 @@ const TotalsBox = ({ subtotal, cgst, sgst, discount, gst }) => (
         </div>
       )}
       <div className="pt-2 mt-1 border-t border-maroon-200 flex justify-between items-center">
-        <span className="font-semibold text-maroon-800 text-sm">Total Payable</span>
+        <span className="font-semibold text-maroon-800 text-sm">Estimated Total</span>
         <span className="font-display font-bold text-2xl text-maroon-700 tracking-tight">
           {fmt(gst.totalAmount)}
         </span>
@@ -294,7 +303,6 @@ const CustomerPicker = ({ value, onChange, error }) => {
     placeholderData: (prev) => prev,
   });
 
-  // Close on outside click
   const handleBlur = useCallback((e) => {
     if (ref.current && !ref.current.contains(e.relatedTarget)) setOpen(false);
   }, []);
@@ -336,7 +344,6 @@ const CustomerPicker = ({ value, onChange, error }) => {
             transition={{ duration: 0.14 }}
             className="absolute z-50 top-[calc(100%+6px)] left-0 right-0 bg-white rounded-xl border border-[rgba(123,28,28,0.12)] shadow-bpc-lg overflow-hidden origin-top"
           >
-            {/* Search input */}
             <div className="p-2 border-b border-[rgba(123,28,28,0.06)]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#9A7A7A]" />
@@ -436,7 +443,7 @@ const MissingDetailsDialog = ({ open, onClose, onSubmit, fields }) => {
                 {fields.map((f) => (
                   <div key={f.key}>
                     <label className="form-label flex items-center gap-1.5">
-                      <Hash className="w-3.5 h-3.5" /> {f.label} *
+                      <MapPin className="w-3.5 h-3.5" /> {f.label} *
                     </label>
                     <input
                       value={values[f.key] || ''}
@@ -478,19 +485,19 @@ const MissingDetailsDialog = ({ open, onClose, onSubmit, fields }) => {
   );
 };
 
-/** Existing invoices list row */
-const InvoiceRow = ({ inv, onView, onDelete }) => {
+/** Quotation list row */
+const QuotationRow = ({ q: quot, onView, onDelete, onConvert, onPdf }) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [isPdfLoading, setPdfLoading] = useState(false);
 
   const handlePdf = async () => {
     setPdfLoading(true);
     try {
-      const res = await invoiceAPI.getPDF(inv._id);
+      const res = await quotationAPI.getPDF(quot._id);
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${inv.invoiceNumber}.pdf`;
+      a.download = `${quot.quotationNumber}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -511,56 +518,42 @@ const InvoiceRow = ({ inv, onView, onDelete }) => {
         exit={{ opacity: 0 }}
         className="group flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3.5 border-b border-[rgba(123,28,28,0.06)] last:border-0 hover:bg-maroon-50/40 transition-colors"
       >
-        {/* Invoice number + customer */}
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-maroon-100 flex items-center justify-center flex-shrink-0">
-            <FileText className="w-4 h-4 text-maroon-600" />
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 flex items-center justify-center flex-shrink-0">
+            <FileText className="w-4 h-4 text-amber-600" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-[#1A0505] font-mono">{inv.invoiceNumber}</p>
+            <p className="text-sm font-semibold text-[#1A0505] font-mono">{quot.quotationNumber}</p>
             <p className="text-xs text-[#9A7A7A] truncate">
-              {inv.customer?.name || '—'}
-              {inv.customer?.organization ? ` · ${inv.customer.organization}` : ''}
+              {quot.customer?.name || '—'}
+              {quot.customer?.organization ? ` · ${quot.customer.organization}` : ''}
             </p>
           </div>
         </div>
 
-        {/* Meta */}
         <div className="flex items-center gap-4 sm:gap-6 flex-shrink-0">
           <div className="text-right">
-            <p className="text-xs text-[#9A7A7A]">{inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</p>
+            <p className="text-xs text-[#9A7A7A]">{quot.quotationDate ? new Date(quot.quotationDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</p>
           </div>
           <div className="text-right min-w-[90px]">
-            <p className="font-mono font-semibold text-maroon-700 text-sm">{fmt(inv.totalAmount)}</p>
+            <p className="font-mono font-semibold text-maroon-700 text-sm">{fmt(quot.totalAmount)}</p>
           </div>
-          <StatusBadge status={inv.status} />
+          <StatusBadge status={quot.status} />
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
-          <button
-            type="button"
-            onClick={() => onView(inv)}
-            className="p-2 rounded-lg text-[#9A7A7A] hover:text-maroon-700 hover:bg-maroon-100 transition-colors"
-            title="View invoice details"
-          >
+        <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-opacity">
+          <button type="button" onClick={() => onView(quot)} className="p-2 rounded-lg text-[#9A7A7A] hover:text-maroon-700 hover:bg-maroon-100 transition-colors" title="View details">
             <Eye className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            onClick={handlePdf}
-            disabled={isPdfLoading}
-            className="p-2 rounded-lg text-[#9A7A7A] hover:text-maroon-700 hover:bg-maroon-100 transition-colors disabled:opacity-50"
-            title="Download PDF"
-          >
+          <button type="button" onClick={handlePdf} disabled={isPdfLoading} className="p-2 rounded-lg text-[#9A7A7A] hover:text-maroon-700 hover:bg-maroon-100 transition-colors disabled:opacity-50" title="Download PDF">
             {isPdfLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirmOpen(true)}
-            className="p-2 rounded-lg text-[#9A7A7A] hover:text-red-500 hover:bg-red-50 transition-colors"
-            title="Delete invoice"
-          >
+          {!quot.convertedToInvoice && (quot.status === 'draft' || quot.status === 'sent' || quot.status === 'accepted') && (
+            <button type="button" onClick={() => onConvert(quot)} className="p-2 rounded-lg text-[#9A7A7A] hover:text-green-600 hover:bg-green-50 transition-colors" title="Convert to Invoice">
+              <ArrowRightLeft className="w-4 h-4" />
+            </button>
+          )}
+          <button type="button" onClick={() => setConfirmOpen(true)} className="p-2 rounded-lg text-[#9A7A7A] hover:text-red-500 hover:bg-red-50 transition-colors" title="Delete">
             <Trash2 className="w-4 h-4" />
           </button>
         </div>
@@ -569,9 +562,9 @@ const InvoiceRow = ({ inv, onView, onDelete }) => {
       <ConfirmDialog
         open={confirmOpen}
         onClose={() => setConfirmOpen(false)}
-        onConfirm={() => { onDelete(inv._id); setConfirmOpen(false); }}
-        title="Delete Invoice"
-        message={`Delete invoice ${inv.invoiceNumber}? This cannot be undone.`}
+        onConfirm={() => { onDelete(quot._id); setConfirmOpen(false); }}
+        title="Delete Quotation"
+        message={`Delete quotation ${quot.quotationNumber}? This cannot be undone.`}
         confirmText="Delete"
         variant="danger"
       />
@@ -579,10 +572,10 @@ const InvoiceRow = ({ inv, onView, onDelete }) => {
   );
 };
 
-/** Invoice detail slide-over panel */
-const InvoiceDetailPanel = ({ invoice, onClose, onPdf }) => {
-  if (!invoice) return null;
-  const gst = calcGST(invoice.subtotal, invoice.cgst, invoice.sgst, invoice.discountAmount);
+/** Quotation detail slide-over */
+const QuotationDetailPanel = ({ quotation, onClose, onPdf, onConvert }) => {
+  if (!quotation) return null;
+  const gst = calcGST(quotation.subtotal, quotation.cgst, quotation.sgst, quotation.discountAmount);
 
   return (
     <motion.div
@@ -592,13 +585,20 @@ const InvoiceDetailPanel = ({ invoice, onClose, onPdf }) => {
       transition={{ type: 'spring', damping: 32, stiffness: 320 }}
       className="fixed right-0 top-0 bottom-0 w-full sm:w-[480px] bg-white shadow-bpc-xl z-[200] flex flex-col"
     >
-      {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-[rgba(123,28,28,0.08)] bg-maroon-50/40">
         <div>
-          <p className="text-xs text-[#9A7A7A] uppercase tracking-widest font-medium">Invoice</p>
-          <h3 className="font-mono font-bold text-maroon-800 text-lg leading-tight">{invoice.invoiceNumber}</h3>
+          <p className="text-xs text-[#9A7A7A] uppercase tracking-widest font-medium">Quotation</p>
+          <h3 className="font-mono font-bold text-maroon-800 text-lg leading-tight">{quotation.quotationNumber}</h3>
         </div>
         <div className="flex items-center gap-2">
+          {!quotation.convertedToInvoice && (
+            <button
+              onClick={() => onConvert(quotation)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" /> Convert
+            </button>
+          )}
           <button
             onClick={onPdf}
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-maroon-600 rounded-lg hover:bg-maroon-700 transition-colors"
@@ -615,27 +615,51 @@ const InvoiceDetailPanel = ({ invoice, onClose, onPdf }) => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
-        {/* Customer + Date */}
+        {/* Status + Validity */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <StatusBadge status={quotation.status} />
+          {quotation.convertedToInvoice && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-green-50 text-green-700 border border-green-200">
+              <ArrowRightLeft className="w-3 h-3" />
+              Converted: {quotation.convertedToInvoice.invoiceNumber || 'Invoice'}
+            </span>
+          )}
+        </div>
+
+        {/* Customer + Event */}
         <div className="grid grid-cols-2 gap-4">
           <div className="p-4 bg-maroon-50 rounded-xl">
-            <p className="text-[10px] font-semibold text-[#9A7A7A] uppercase tracking-widest mb-1.5">To</p>
-            <p className="font-semibold text-[#1A0505] text-sm leading-snug">{invoice.customer?.name}</p>
-            {invoice.customer?.organization && <p className="text-xs text-[#9A7A7A] mt-0.5">{invoice.customer.organization}</p>}
-            {invoice.customer?.phone && <p className="text-xs text-[#9A7A7A] mt-0.5">{invoice.customer.phone}</p>}
+            <p className="text-[10px] font-semibold text-[#9A7A7A] uppercase tracking-widest mb-1.5">Customer Details</p>
+            <p className="font-semibold text-[#1A0505] text-sm leading-snug">{quotation.customer?.name}</p>
+            {quotation.customer?.organization && <p className="text-xs text-[#9A7A7A] mt-0.5">{quotation.customer.organization}</p>}
+            {quotation.customer?.phone && <p className="text-xs text-[#9A7A7A] mt-0.5">{quotation.customer.phone}</p>}
           </div>
           <div className="p-4 bg-maroon-50 rounded-xl">
             <p className="text-[10px] font-semibold text-[#9A7A7A] uppercase tracking-widest mb-1.5">Details</p>
             <p className="text-xs text-[#5A3A3A]"><span className="font-medium">Date: </span>
-              {invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+              {quotation.quotationDate ? new Date(quotation.quotationDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
             </p>
-            <p className="text-xs text-[#5A3A3A] mt-1"><span className="font-medium">Department: </span>{invoice.placeOfSupply || 'Tamil Nadu'}</p>
-            <div className="mt-2"><StatusBadge status={invoice.status} /></div>
+            <p className="text-xs text-[#5A3A3A] mt-1"><span className="font-medium">Valid Until: </span>
+              {quotation.validUntil ? new Date(quotation.validUntil).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* Event Location + Service Venue */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
+            <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-widest mb-1.5">Event Location</p>
+            <p className="text-sm text-amber-900">{quotation.eventLocation || '—'}</p>
+          </div>
+          <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
+            <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-widest mb-1.5">Service Venue</p>
+            <p className="text-sm text-blue-900">{quotation.serviceVenue || '—'}</p>
           </div>
         </div>
 
         {/* Items table */}
         <div>
-          <p className="text-[10px] font-semibold text-[#9A7A7A] uppercase tracking-widest mb-3">Line Items</p>
+          <p className="text-[10px] font-semibold text-[#9A7A7A] uppercase tracking-widest mb-3">Items / Services</p>
           <div className="rounded-xl border border-[rgba(123,28,28,0.08)] overflow-hidden">
             <table className="w-full text-sm">
               <thead>
@@ -647,7 +671,7 @@ const InvoiceDetailPanel = ({ invoice, onClose, onPdf }) => {
                 </tr>
               </thead>
               <tbody>
-                {invoice.items?.map((it, i) => (
+                {quotation.items?.map((it, i) => (
                   <tr key={i} className="border-b border-[rgba(123,28,28,0.05)] last:border-0">
                     <td className="px-3 py-2.5 text-[#1A0505]">{it.name}</td>
                     <td className="px-2 py-2.5 text-center text-[#5A3A3A]">{it.quantity} {it.unit}</td>
@@ -660,24 +684,19 @@ const InvoiceDetailPanel = ({ invoice, onClose, onPdf }) => {
           </div>
         </div>
 
-        {/* Totals */}
-        <TotalsBox subtotal={invoice.subtotal} cgst={invoice.cgst} sgst={invoice.sgst} discount={invoice.discountAmount} gst={gst} />
+        <TotalsBox subtotal={quotation.subtotal} cgst={quotation.cgst} sgst={quotation.sgst} discount={quotation.discountAmount} gst={gst} />
 
-        {/* Notes */}
-        {invoice.notes && (
+        {quotation.notes && (
           <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl">
-            <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-widest mb-1.5">Purpose</p>
-            <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-line">{invoice.notes}</p>
+            <p className="text-[10px] font-semibold text-amber-700 uppercase tracking-widest mb-1.5">Notes</p>
+            <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-line">{quotation.notes}</p>
           </div>
         )}
 
-        {/* Settlement */}
-        {invoice.settlementDetails?.settledByName && (
-          <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
-            <p className="text-[10px] font-semibold text-blue-700 uppercase tracking-widest mb-1.5">Settlement Details</p>
-            <p className="text-sm text-blue-900 font-medium">{invoice.settlementDetails.settledByName}</p>
-            {invoice.settlementDetails.settledByCompany && <p className="text-xs text-blue-700">{invoice.settlementDetails.settledByCompany}</p>}
-            {invoice.settlementDetails.settledByPhone && <p className="text-xs text-blue-700">{invoice.settlementDetails.settledByPhone}</p>}
+        {quotation.termsAndConditions && (
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl">
+            <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest mb-1.5">Terms & Conditions</p>
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{quotation.termsAndConditions}</p>
           </div>
         )}
       </div>
@@ -686,7 +705,7 @@ const InvoiceDetailPanel = ({ invoice, onClose, onPdf }) => {
 };
 
 // ─── Form validation ──────────────────────────────────────────────────────────
-const validate = (form) => {
+const validateForm = (form) => {
   const errors = {};
   if (!form.customer) errors.customer = 'Please select a customer';
   if (form.items.some((it) => !it.name.trim())) errors.items = 'All items must have a description';
@@ -697,34 +716,35 @@ const validate = (form) => {
 
 // ─── Main Page Component ──────────────────────────────────────────────────────
 
-const InvoiceGenerator = () => {
+const QuotationGenerator = () => {
   const queryClient = useQueryClient();
 
-  // ── Settings (for default GST rates) ────────────────────────────────────────
+  // Settings
   const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => settingsAPI.get().then((r) => r.data.data),
     staleTime: 5 * 60 * 1000,
   });
 
-  // ── Form State ───────────────────────────────────────────────────────────────
+  // Form state
   const [form, setForm] = useState(() => ({
     customer: null,
-    invoiceDate: today(),
+    quotationDate: today(),
+    validUntil: addDays(today(), 15),
     items: [makeEmptyItem()],
     cgst: '',
     sgst: '',
     discountAmount: '',
-    placeOfSupply: 'Tamil Nadu',
+    eventLocation: '',
+    serviceVenue: '',
     notes: '',
-    settlementDetails: { settledByName: '', settledByPhone: '', settledByCompany: '' },
+    termsAndConditions: DEFAULT_TERMS,
   }));
   const [errors, setErrors] = useState({});
-  const [showSettlement, setShowSettlement] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [missingDialog, setMissingDialog] = useState({ open: false, fields: [] });
+  const [missingDialog, setMissingDialog] = useState({ open: false, fields: [], pendingData: null });
 
-  // Sync default GST rates from settings once loaded
+  // Sync defaults
   const defaultsApplied = useRef(false);
   if (settings && !defaultsApplied.current) {
     defaultsApplied.current = true;
@@ -735,13 +755,13 @@ const InvoiceGenerator = () => {
     }));
   }
 
-  // ── Live GST calculation ─────────────────────────────────────────────────────
+  // Live GST
   const subtotal = form.items.reduce(
     (sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0), 0
   );
   const gst = calcGST(subtotal, form.cgst, form.sgst, form.discountAmount);
 
-  // ── Item operations ──────────────────────────────────────────────────────────
+  // Item operations
   const updateItem = useCallback((id, field, value) => {
     setForm((f) => ({
       ...f,
@@ -764,31 +784,33 @@ const InvoiceGenerator = () => {
   const resetForm = useCallback(() => {
     setForm({
       customer: null,
-      invoiceDate: today(),
+      quotationDate: today(),
+      validUntil: addDays(today(), 15),
       items: [makeEmptyItem()],
       cgst: String(settings?.defaultCGSTRate ?? 2.5),
       sgst: String(settings?.defaultSGSTRate ?? 2.5),
       discountAmount: '',
-      placeOfSupply: 'Tamil Nadu',
+      eventLocation: '',
+      serviceVenue: '',
       notes: '',
-      settlementDetails: { settledByName: '', settledByPhone: '', settledByCompany: '' },
+      termsAndConditions: DEFAULT_TERMS,
     });
     setErrors({});
-    setShowSettlement(false);
     setShowAdvanced(false);
     defaultsApplied.current = true;
   }, [settings]);
 
-  // ── Invoice list state ───────────────────────────────────────────────────────
+  // List state
   const [listSearch, setListSearch] = useState('');
   const [listStatus, setListStatus] = useState('');
   const [listPage, setListPage] = useState(1);
-  const [viewInvoice, setViewInvoice] = useState(null);
-  const [activeTab, setActiveTab] = useState('create'); // 'create' | 'list'
+  const [viewQuotation, setViewQuotation] = useState(null);
+  const [activeTab, setActiveTab] = useState('create');
+  const [convertConfirm, setConvertConfirm] = useState(null);
 
-  const { data: invoiceData, isLoading: listLoading, isFetching: listFetching } = useQuery({
-    queryKey: ['invoices', listSearch, listStatus, listPage],
-    queryFn: () => invoiceAPI.getAll({
+  const { data: quotationData, isLoading: listLoading, isFetching: listFetching } = useQuery({
+    queryKey: ['quotations', listSearch, listStatus, listPage],
+    queryFn: () => quotationAPI.getAll({
       search: listSearch || undefined,
       status: listStatus || undefined,
       page: listPage,
@@ -797,35 +819,51 @@ const InvoiceGenerator = () => {
     keepPreviousData: true,
   });
 
-  // ── Create mutation ──────────────────────────────────────────────────────────
+  // Create mutation
   const createMut = useMutation({
-    mutationFn: (payload) => invoiceAPI.create(payload),
+    mutationFn: (payload) => quotationAPI.create(payload),
     onSuccess: (res) => {
-      toast.success(`Invoice ${res.data.data.invoiceNumber} created!`);
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success(`Quotation ${res.data.data.quotationNumber} created!`);
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
       resetForm();
       setActiveTab('list');
     },
     onError: (err) => {
-      toast.error(err.response?.data?.message || 'Failed to create invoice');
+      toast.error(err.response?.data?.message || 'Failed to create quotation');
     },
   });
 
-  // ── Delete mutation ──────────────────────────────────────────────────────────
+  // Delete mutation
   const deleteMut = useMutation({
-    mutationFn: (id) => invoiceAPI.delete(id),
+    mutationFn: (id) => quotationAPI.delete(id),
     onSuccess: () => {
-      toast.success('Invoice deleted');
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      if (viewInvoice) setViewInvoice(null);
+      toast.success('Quotation deleted');
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      if (viewQuotation) setViewQuotation(null);
     },
-    onError: () => toast.error('Failed to delete invoice'),
+    onError: () => toast.error('Failed to delete quotation'),
   });
 
-  // ── Submit ───────────────────────────────────────────────────────────────────
+  // Convert to Invoice mutation
+  const convertMut = useMutation({
+    mutationFn: (id) => quotationAPI.convertToInvoice(id),
+    onSuccess: (res) => {
+      toast.success(res.data.message || 'Converted to invoice!');
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      setConvertConfirm(null);
+      if (viewQuotation) setViewQuotation(null);
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Failed to convert');
+      setConvertConfirm(null);
+    },
+  });
+
+  // Submit
   const handleSubmit = (e) => {
     e.preventDefault();
-    const errs = validate(form);
+    const errs = validateForm(form);
     if (Object.keys(errs).length) {
       setErrors(errs);
       const firstErr = document.querySelector('[data-error-field]');
@@ -833,30 +871,28 @@ const InvoiceGenerator = () => {
       return;
     }
 
+    // Check if event location / service venue are missing
     const missingFields = [];
-    if (!form.placeOfSupply?.trim() && !form.customer?.department?.trim()) {
-      missingFields.push({ key: 'placeOfSupply', label: 'Department', placeholder: 'e.g. Sales, HR, Logistics' });
+    if (!form.eventLocation.trim()) {
+      missingFields.push({ key: 'eventLocation', label: 'Event Location', placeholder: 'e.g. Grand Hall, Trichy' });
     }
-    if (!form.notes?.trim() && !form.settlementDetails.settledByName?.trim()) {
-      missingFields.push({ key: 'notes', label: 'Purpose', placeholder: 'e.g. Team Lunch, Event' });
+    if (!form.serviceVenue.trim()) {
+      missingFields.push({ key: 'serviceVenue', label: 'Service Venue', placeholder: 'e.g. Hotel ABC, Srirangam' });
     }
 
     if (missingFields.length > 0) {
-      setMissingDialog({ open: true, fields: missingFields });
+      setMissingDialog({ open: true, fields: missingFields, pendingData: true });
       return;
     }
 
-    submitInvoice(form.placeOfSupply, form.notes);
+    submitQuotation(form.eventLocation, form.serviceVenue);
   };
 
-  const submitInvoice = (dept, purpose) => {
-    const hasSd = form.settlementDetails.settledByName.trim() ||
-      form.settlementDetails.settledByCompany.trim() ||
-      form.settlementDetails.settledByPhone.trim();
-
+  const submitQuotation = (eventLoc, serviceVen) => {
     createMut.mutate({
       customer: form.customer._id,
-      invoiceDate: form.invoiceDate,
+      quotationDate: form.quotationDate,
+      validUntil: form.validUntil,
       items: form.items.map(({ name, quantity, unit, unitPrice }) => ({
         name: name.trim(),
         quantity: Number(quantity),
@@ -866,25 +902,22 @@ const InvoiceGenerator = () => {
       cgst: Number(form.cgst) || 0,
       sgst: Number(form.sgst) || 0,
       discountAmount: Number(form.discountAmount) || 0,
-      placeOfSupply: dept || 'Tamil Nadu',
-      notes: purpose?.trim() || undefined,
-      settlementDetails: hasSd ? {
-        settledByName: form.settlementDetails.settledByName.trim() || undefined,
-        settledByPhone: form.settlementDetails.settledByPhone.trim() || undefined,
-        settledByCompany: form.settlementDetails.settledByCompany.trim() || undefined,
-      } : undefined,
+      eventLocation: eventLoc || form.eventLocation,
+      serviceVenue: serviceVen || form.serviceVenue,
+      notes: form.notes.trim() || undefined,
+      termsAndConditions: form.termsAndConditions.trim() || undefined,
     });
   };
 
-  // ── View-invoice PDF handler ─────────────────────────────────────────────────
-  const handleViewPdf = async (inv) => {
+  // PDF handler
+  const handleViewPdf = async (quot) => {
     const toastId = toast.loading('Generating PDF…');
     try {
-      const res = await invoiceAPI.getPDF(inv._id);
+      const res = await quotationAPI.getPDF(quot._id);
       const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${inv.invoiceNumber}.pdf`;
+      a.download = `${quot.quotationNumber}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -899,22 +932,21 @@ const InvoiceGenerator = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-0 font-body pb-20 md:pb-8">
 
-      {/* ── Page Header ──────────────────────────────────────────────────── */}
+      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="font-display text-3xl font-bold text-maroon-800 tracking-tight">
-            Invoice Generator
+            Quotation Generator
           </h1>
           <p className="text-sm text-[#9A7A7A] mt-1">
-            Create standalone GST invoices for clients
+            Create professional quotations for catering events
           </p>
         </div>
 
-        {/* Tab switcher */}
         <div className="flex rounded-xl border border-[rgba(123,28,28,0.12)] overflow-hidden bg-maroon-50/50 p-1 gap-1 self-start sm:self-auto flex-shrink-0">
           {[
-            { id: 'create', label: 'New Invoice', icon: Plus },
-            { id: 'list', label: 'All Invoices', icon: ClipboardList },
+            { id: 'create', label: 'New Quotation', icon: Plus },
+            { id: 'list', label: 'All Quotations', icon: ClipboardList },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -932,7 +964,7 @@ const InvoiceGenerator = () => {
         </div>
       </div>
 
-      {/* ── CREATE TAB ───────────────────────────────────────────────────── */}
+      {/* CREATE TAB */}
       <AnimatePresence mode="wait">
         {activeTab === 'create' && (
           <motion.div
@@ -945,23 +977,22 @@ const InvoiceGenerator = () => {
             <form onSubmit={handleSubmit} noValidate>
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-                {/* ── Left column: main form ─────────────────────────────── */}
+                {/* Left column */}
                 <div className="xl:col-span-2 space-y-5">
 
-                  {/* Section: Invoice Header */}
+                  {/* Quotation Details */}
                   <div className="bg-white rounded-2xl border border-[rgba(123,28,28,0.08)] shadow-bpc-sm overflow-hidden">
                     <div className="px-6 py-4 bg-maroon-50/40 border-b border-[rgba(123,28,28,0.08)] flex items-center gap-3">
                       <div className="w-8 h-8 rounded-lg bg-maroon-100 flex items-center justify-center">
                         <FileText className="w-4 h-4 text-maroon-600" />
                       </div>
-                      <h2 className="font-display text-lg font-semibold text-[#1A0505]">Invoice Details</h2>
+                      <h2 className="font-display text-lg font-semibold text-[#1A0505]">Quotation Details</h2>
                     </div>
                     <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
-
-                      {/* Customer picker */}
+                      {/* Customer */}
                       <div className="md:col-span-2" data-error-field={errors.customer ? 'customer' : undefined}>
                         <label className="form-label flex items-center gap-1.5">
-                          <User className="w-3.5 h-3.5" /> To *
+                          <User className="w-3.5 h-3.5" /> Customer Details *
                         </label>
                         <CustomerPicker
                           value={form.customer}
@@ -976,40 +1007,66 @@ const InvoiceGenerator = () => {
                       {/* Date */}
                       <div>
                         <label className="form-label flex items-center gap-1.5">
-                          <CalendarDays className="w-3.5 h-3.5" /> Invoice Date
+                          <CalendarDays className="w-3.5 h-3.5" /> Quotation Date
                         </label>
                         <input
                           type="date"
-                          value={form.invoiceDate}
-                          onChange={(e) => setForm((f) => ({ ...f, invoiceDate: e.target.value }))}
-                          max={today()}
+                          value={form.quotationDate}
+                          onChange={(e) => setForm((f) => ({ ...f, quotationDate: e.target.value, validUntil: addDays(e.target.value, 15) }))}
                           className="form-input"
                         />
                       </div>
 
-                      {/* Place of supply */}
+                      {/* Valid Until */}
                       <div>
                         <label className="form-label flex items-center gap-1.5">
-                          <Hash className="w-3.5 h-3.5" /> Department
+                          <Clock className="w-3.5 h-3.5" /> Valid Until
                         </label>
                         <input
-                          value={form.placeOfSupply}
-                          onChange={(e) => setForm((f) => ({ ...f, placeOfSupply: e.target.value }))}
-                          placeholder="e.g. Tamil Nadu"
+                          type="date"
+                          value={form.validUntil}
+                          onChange={(e) => setForm((f) => ({ ...f, validUntil: e.target.value }))}
+                          min={form.quotationDate}
+                          className="form-input"
+                        />
+                      </div>
+
+                      {/* Event Location */}
+                      <div>
+                        <label className="form-label flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5" /> Event Location
+                        </label>
+                        <input
+                          value={form.eventLocation}
+                          onChange={(e) => setForm((f) => ({ ...f, eventLocation: e.target.value }))}
+                          placeholder="e.g. Grand Hall, Trichy"
+                          className="form-input"
+                        />
+                      </div>
+
+                      {/* Service Venue */}
+                      <div>
+                        <label className="form-label flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5" /> Service Venue
+                        </label>
+                        <input
+                          value={form.serviceVenue}
+                          onChange={(e) => setForm((f) => ({ ...f, serviceVenue: e.target.value }))}
+                          placeholder="e.g. Hotel ABC, Srirangam"
                           className="form-input"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Section: Line Items */}
+                  {/* Line Items */}
                   <div className="bg-white rounded-2xl border border-[rgba(123,28,28,0.08)] shadow-bpc-sm overflow-hidden">
                     <div className="px-6 py-4 bg-maroon-50/40 border-b border-[rgba(123,28,28,0.08)] flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-maroon-100 flex items-center justify-center">
                           <Package className="w-4 h-4 text-maroon-600" />
                         </div>
-                        <h2 className="font-display text-lg font-semibold text-[#1A0505]">Line Items</h2>
+                        <h2 className="font-display text-lg font-semibold text-[#1A0505]">Items / Services</h2>
                         <span className="px-2 py-0.5 bg-maroon-100 text-maroon-700 rounded-full text-xs font-semibold">
                           {form.items.length}
                         </span>
@@ -1022,39 +1079,22 @@ const InvoiceGenerator = () => {
                     </div>
 
                     <div className="p-6">
-                      {/* Desktop table layout */}
                       <div className="hidden md:block space-y-2">
                         <AnimatePresence initial={false}>
                           {form.items.map((item, i) => (
-                            <ItemRow
-                              key={item.id}
-                              item={item}
-                              index={i}
-                              onChange={updateItem}
-                              onRemove={removeItem}
-                              canRemove={form.items.length > 1}
-                            />
+                            <ItemRow key={item.id} item={item} index={i} onChange={updateItem} onRemove={removeItem} canRemove={form.items.length > 1} />
                           ))}
                         </AnimatePresence>
                       </div>
 
-                      {/* Mobile card layout */}
                       <div className="md:hidden space-y-3">
                         <AnimatePresence initial={false}>
                           {form.items.map((item, i) => (
-                            <ItemCard
-                              key={item.id}
-                              item={item}
-                              index={i}
-                              onChange={updateItem}
-                              onRemove={removeItem}
-                              canRemove={form.items.length > 1}
-                            />
+                            <ItemCard key={item.id} item={item} index={i} onChange={updateItem} onRemove={removeItem} canRemove={form.items.length > 1} />
                           ))}
                         </AnimatePresence>
                       </div>
 
-                      {/* Add item */}
                       <button
                         type="button"
                         onClick={addItem}
@@ -1066,7 +1106,7 @@ const InvoiceGenerator = () => {
                     </div>
                   </div>
 
-                  {/* Section: Tax + Discount (expandable) */}
+                  {/* Tax & Discount */}
                   <div className="bg-white rounded-2xl border border-[rgba(123,28,28,0.08)] shadow-bpc-sm overflow-hidden">
                     <button
                       type="button"
@@ -1085,67 +1125,26 @@ const InvoiceGenerator = () => {
                           </span>
                         )}
                       </div>
-                      {showAdvanced
-                        ? <ChevronUp className="w-4 h-4 text-[#9A7A7A]" />
-                        : <ChevronDown className="w-4 h-4 text-[#9A7A7A]" />
-                      }
+                      {showAdvanced ? <ChevronUp className="w-4 h-4 text-[#9A7A7A]" /> : <ChevronDown className="w-4 h-4 text-[#9A7A7A]" />}
                     </button>
 
                     <AnimatePresence initial={false}>
                       {showAdvanced && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.22 }}
-                          className="overflow-hidden"
-                        >
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
                           <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-5">
                             <div>
-                              <label className="form-label flex items-center gap-1.5">
-                                <Percent className="w-3 h-3" /> CGST Rate (%)
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={50}
-                                step={0.5}
-                                value={form.cgst}
-                                onChange={(e) => setForm((f) => ({ ...f, cgst: e.target.value }))}
-                                placeholder="2.5"
-                                className="form-input"
-                              />
+                              <label className="form-label flex items-center gap-1.5"><Percent className="w-3 h-3" /> CGST Rate (%)</label>
+                              <input type="number" min={0} max={50} step={0.5} value={form.cgst} onChange={(e) => setForm((f) => ({ ...f, cgst: e.target.value }))} placeholder="2.5" className="form-input" />
                             </div>
                             <div>
-                              <label className="form-label flex items-center gap-1.5">
-                                <Percent className="w-3 h-3" /> SGST Rate (%)
-                              </label>
-                              <input
-                                type="number"
-                                min={0}
-                                max={50}
-                                step={0.5}
-                                value={form.sgst}
-                                onChange={(e) => setForm((f) => ({ ...f, sgst: e.target.value }))}
-                                placeholder="2.5"
-                                className="form-input"
-                              />
+                              <label className="form-label flex items-center gap-1.5"><Percent className="w-3 h-3" /> SGST Rate (%)</label>
+                              <input type="number" min={0} max={50} step={0.5} value={form.sgst} onChange={(e) => setForm((f) => ({ ...f, sgst: e.target.value }))} placeholder="2.5" className="form-input" />
                             </div>
                             <div>
-                              <label className="form-label flex items-center gap-1.5">
-                                <Tag className="w-3 h-3" /> Discount (₹)
-                              </label>
+                              <label className="form-label flex items-center gap-1.5"><Tag className="w-3 h-3" /> Discount (₹)</label>
                               <div className="relative">
                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9A7A7A] text-xs pointer-events-none">₹</span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={0.01}
-                                  value={form.discountAmount}
-                                  onChange={(e) => setForm((f) => ({ ...f, discountAmount: e.target.value }))}
-                                  placeholder="0.00"
-                                  className="form-input pl-6"
-                                />
+                                <input type="number" min={0} step={0.01} value={form.discountAmount} onChange={(e) => setForm((f) => ({ ...f, discountAmount: e.target.value }))} placeholder="0.00" className="form-input pl-6" />
                               </div>
                             </div>
                           </div>
@@ -1154,117 +1153,61 @@ const InvoiceGenerator = () => {
                     </AnimatePresence>
                   </div>
 
-                  {/* Section: Notes */}
+                  {/* Notes */}
                   <div className="bg-white rounded-2xl border border-[rgba(123,28,28,0.08)] shadow-bpc-sm overflow-hidden">
                     <div className="px-6 py-4 bg-maroon-50/40 border-b border-[rgba(123,28,28,0.08)] flex items-center gap-3">
-                      <h2 className="font-display text-lg font-semibold text-[#1A0505]">Purpose <span className="text-sm font-body font-normal text-[#9A7A7A]">(Optional)</span></h2>
+                      <h2 className="font-display text-lg font-semibold text-[#1A0505]">Notes <span className="text-sm font-body font-normal text-[#9A7A7A]">(Optional)</span></h2>
                     </div>
                     <div className="p-6">
                       <textarea
                         value={form.notes}
                         onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                        placeholder="Payment terms, special instructions, thank you message…"
-                        rows={3}
+                        placeholder="Special instructions, menu preferences…"
+                        rows={2}
                         maxLength={2000}
                         className="form-input resize-none text-sm"
                       />
-                      <p className="text-right text-[11px] text-[#9A7A7A] mt-1.5">
-                        {form.notes.length}/2000
-                      </p>
                     </div>
                   </div>
 
-                  {/* Section: Settlement Details (expandable) */}
+                  {/* Terms & Conditions */}
                   <div className="bg-white rounded-2xl border border-[rgba(123,28,28,0.08)] shadow-bpc-sm overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setShowSettlement((p) => !p)}
-                      className="w-full px-6 py-4 bg-maroon-50/40 border-b border-[rgba(123,28,28,0.08)] flex items-center justify-between hover:bg-maroon-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
-                          <Building2 className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <h2 className="font-display text-lg font-semibold text-[#1A0505]">Settlement Details</h2>
-                        <span className="text-xs text-[#9A7A7A] font-body font-normal">Optional — for third-party payers</span>
+                    <div className="px-6 py-4 bg-maroon-50/40 border-b border-[rgba(123,28,28,0.08)] flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                        <Shield className="w-4 h-4 text-blue-600" />
                       </div>
-                      {showSettlement
-                        ? <ChevronUp className="w-4 h-4 text-[#9A7A7A]" />
-                        : <ChevronDown className="w-4 h-4 text-[#9A7A7A]" />
-                      }
-                    </button>
-
-                    <AnimatePresence initial={false}>
-                      {showSettlement && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.22 }}
-                          className="overflow-hidden"
-                        >
-                          <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-5">
-                            <div>
-                              <label className="form-label">Settled By (Name)</label>
-                              <input
-                                value={form.settlementDetails.settledByName}
-                                onChange={(e) => setForm((f) => ({ ...f, settlementDetails: { ...f.settlementDetails, settledByName: e.target.value } }))}
-                                placeholder="Contact person name"
-                                className="form-input text-sm"
-                              />
-                            </div>
-                            <div>
-                              <label className="form-label">Company</label>
-                              <input
-                                value={form.settlementDetails.settledByCompany}
-                                onChange={(e) => setForm((f) => ({ ...f, settlementDetails: { ...f.settlementDetails, settledByCompany: e.target.value } }))}
-                                placeholder="Organisation name"
-                                className="form-input text-sm"
-                              />
-                            </div>
-                            <div>
-                              <label className="form-label">Phone</label>
-                              <input
-                                value={form.settlementDetails.settledByPhone}
-                                onChange={(e) => setForm((f) => ({ ...f, settlementDetails: { ...f.settlementDetails, settledByPhone: e.target.value } }))}
-                                placeholder="+91 XXXXX XXXXX"
-                                className="form-input text-sm"
-                              />
-                            </div>
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                      <h2 className="font-display text-lg font-semibold text-[#1A0505]">Terms & Conditions</h2>
+                    </div>
+                    <div className="p-6">
+                      <textarea
+                        value={form.termsAndConditions}
+                        onChange={(e) => setForm((f) => ({ ...f, termsAndConditions: e.target.value }))}
+                        placeholder="Enter terms and conditions (one per line)…"
+                        rows={4}
+                        maxLength={3000}
+                        className="form-input resize-none text-sm"
+                      />
+                      <p className="text-right text-[11px] text-[#9A7A7A] mt-1.5">
+                        {form.termsAndConditions.length}/3000
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                {/* ── Right column: sticky summary + actions ──────────────── */}
+                {/* Right column: summary */}
                 <div className="xl:col-span-1">
                   <div className="xl:sticky xl:top-[80px] space-y-4">
-
-                    {/* Totals card */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white rounded-2xl border border-[rgba(123,28,28,0.10)] shadow-bpc overflow-hidden"
-                    >
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-2xl border border-[rgba(123,28,28,0.10)] shadow-bpc overflow-hidden">
                       <div className="px-5 py-4 border-b border-[rgba(123,28,28,0.08)] bg-gradient-to-r from-maroon-800 to-maroon-700">
                         <h3 className="font-display text-base font-semibold text-white flex items-center gap-2">
-                          <IndianRupee className="w-4 h-4 text-gold-300" /> Invoice Summary
+                          <IndianRupee className="w-4 h-4 text-gold-300" /> Quotation Summary
                         </h3>
                       </div>
                       <div className="p-5">
-                        <TotalsBox
-                          subtotal={subtotal}
-                          cgst={form.cgst}
-                          sgst={form.sgst}
-                          discount={form.discountAmount}
-                          gst={gst}
-                        />
+                        <TotalsBox subtotal={subtotal} cgst={form.cgst} sgst={form.sgst} discount={form.discountAmount} gst={gst} />
                       </div>
                     </motion.div>
 
-                    {/* Actions */}
                     <div className="space-y-3">
                       <button
                         type="submit"
@@ -1273,7 +1216,7 @@ const InvoiceGenerator = () => {
                       >
                         {createMut.isPending
                           ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</>
-                          : <><FileText className="w-4 h-4" /> Create Invoice</>
+                          : <><FileText className="w-4 h-4" /> Create Quotation</>
                         }
                       </button>
 
@@ -1287,13 +1230,13 @@ const InvoiceGenerator = () => {
                       </button>
                     </div>
 
-                    {/* Tips */}
                     <div className="p-4 bg-amber-50/80 border border-amber-100 rounded-xl">
-                      <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-widest mb-2">Tip</p>
+                      <p className="text-[11px] font-semibold text-amber-700 uppercase tracking-widest mb-2">Tips</p>
                       <ul className="space-y-1.5 text-xs text-amber-800 leading-relaxed">
-                        <li>• CGST & SGST default to settings values</li>
-                        <li>• Use "Settlement Details" when someone else pays on behalf of the customer</li>
-                        <li>• Invoice PDF is generated after saving</li>
+                        <li>• Validity defaults to 15 days</li>
+                        <li>• GST rates default from settings</li>
+                        <li>• Quotation PDF can be generated after saving</li>
+                        <li>• Convert accepted quotations to invoices</li>
                       </ul>
                     </div>
                   </div>
@@ -1303,7 +1246,7 @@ const InvoiceGenerator = () => {
           </motion.div>
         )}
 
-        {/* ── LIST TAB ─────────────────────────────────────────────────────── */}
+        {/* LIST TAB */}
         {activeTab === 'list' && (
           <motion.div
             key="list"
@@ -1320,7 +1263,7 @@ const InvoiceGenerator = () => {
                 <input
                   value={listSearch}
                   onChange={(e) => { setListSearch(e.target.value); setListPage(1); }}
-                  placeholder="Search by invoice number or notes…"
+                  placeholder="Search by quotation number, notes…"
                   className="form-input pl-10 w-full"
                 />
               </div>
@@ -1334,13 +1277,15 @@ const InvoiceGenerator = () => {
                   <option value="">All Status</option>
                   <option value="draft">Draft</option>
                   <option value="sent">Sent</option>
-                  <option value="paid">Paid</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="expired">Expired</option>
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9A7A7A] pointer-events-none" />
               </div>
               <button
                 type="button"
-                onClick={() => queryClient.invalidateQueries({ queryKey: ['invoices'] })}
+                onClick={() => queryClient.invalidateQueries({ queryKey: ['quotations'] })}
                 className="h-12 w-12 flex items-center justify-center border border-[rgba(123,28,28,0.12)] rounded-xl text-[#9A7A7A] hover:text-maroon-700 hover:bg-maroon-50 transition-colors flex-shrink-0"
                 title="Refresh"
               >
@@ -1350,84 +1295,65 @@ const InvoiceGenerator = () => {
 
             {/* Table card */}
             <div className="bg-white rounded-2xl border border-[rgba(123,28,28,0.08)] shadow-bpc-sm overflow-hidden">
-              {/* Header */}
               <div className="px-6 py-4 border-b border-[rgba(123,28,28,0.08)] bg-maroon-50/30 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <SlidersHorizontal className="w-4 h-4 text-maroon-600" />
                   <h3 className="font-semibold text-[#1A0505]">
-                    {invoiceData?.pagination?.total ?? 0} Invoice{(invoiceData?.pagination?.total ?? 0) !== 1 ? 's' : ''}
+                    {quotationData?.pagination?.total ?? 0} Quotation{(quotationData?.pagination?.total ?? 0) !== 1 ? 's' : ''}
                   </h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('create')}
-                  className="btn-bpc text-xs h-8 px-3 gap-1.5"
-                >
+                <button type="button" onClick={() => setActiveTab('create')} className="btn-bpc text-xs h-8 px-3 gap-1.5">
                   <Plus className="w-3.5 h-3.5" /> New
                 </button>
               </div>
 
-              {/* List body */}
               {listLoading ? (
                 <div className="py-16 flex flex-col items-center gap-3 text-[#9A7A7A]">
                   <Loader2 className="w-8 h-8 animate-spin text-maroon-400" />
-                  <p className="text-sm">Loading invoices…</p>
+                  <p className="text-sm">Loading quotations…</p>
                 </div>
-              ) : !invoiceData?.invoices?.length ? (
+              ) : !quotationData?.quotations?.length ? (
                 <div className="py-16 flex flex-col items-center gap-4 text-center px-6">
                   <div className="w-16 h-16 rounded-full bg-maroon-50 flex items-center justify-center">
                     <FileText className="w-7 h-7 text-maroon-300" />
                   </div>
                   <div>
-                    <p className="font-display text-lg font-semibold text-[#1A0505]">No invoices found</p>
+                    <p className="font-display text-lg font-semibold text-[#1A0505]">No quotations found</p>
                     <p className="text-sm text-[#9A7A7A] mt-1">
-                      {listSearch || listStatus ? 'Try adjusting your filters.' : 'Create your first invoice to get started.'}
+                      {listSearch || listStatus ? 'Try adjusting your filters.' : 'Create your first quotation to get started.'}
                     </p>
                   </div>
                   {!listSearch && !listStatus && (
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('create')}
-                      className="btn-bpc text-sm gap-2 mt-1"
-                    >
-                      <Plus className="w-4 h-4" /> Create Invoice
+                    <button type="button" onClick={() => setActiveTab('create')} className="btn-bpc text-sm gap-2 mt-1">
+                      <Plus className="w-4 h-4" /> Create Quotation
                     </button>
                   )}
                 </div>
               ) : (
                 <AnimatePresence initial={false}>
-                  {invoiceData.invoices.map((inv) => (
-                    <InvoiceRow
-                      key={inv._id}
-                      inv={inv}
-                      onView={setViewInvoice}
+                  {quotationData.quotations.map((quot) => (
+                    <QuotationRow
+                      key={quot._id}
+                      q={quot}
+                      onView={setViewQuotation}
                       onDelete={(id) => deleteMut.mutate(id)}
+                      onConvert={(q) => setConvertConfirm(q)}
+                      onPdf={handleViewPdf}
                     />
                   ))}
                 </AnimatePresence>
               )}
 
-              {/* Pagination */}
-              {invoiceData?.pagination?.pages > 1 && (
+              {quotationData?.pagination?.pages > 1 && (
                 <div className="flex items-center justify-between px-6 py-4 border-t border-[rgba(123,28,28,0.06)] bg-maroon-50/20">
                   <p className="text-xs text-[#9A7A7A]">
-                    Page {listPage} of {invoiceData.pagination.pages} · {invoiceData.pagination.total} total
+                    Page {listPage} of {quotationData.pagination.pages} · {quotationData.pagination.total} total
                   </p>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setListPage((p) => Math.max(1, p - 1))}
-                      disabled={listPage === 1}
-                      className="h-8 px-3 text-xs font-medium rounded-lg border border-[rgba(123,28,28,0.12)] text-[#5A3A3A] hover:bg-maroon-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                    >
+                    <button type="button" onClick={() => setListPage((p) => Math.max(1, p - 1))} disabled={listPage === 1} className="h-8 px-3 text-xs font-medium rounded-lg border border-[rgba(123,28,28,0.12)] text-[#5A3A3A] hover:bg-maroon-50 disabled:opacity-40 disabled:pointer-events-none transition-colors">
                       ← Prev
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setListPage((p) => Math.min(invoiceData.pagination.pages, p + 1))}
-                      disabled={listPage === invoiceData.pagination.pages}
-                      className="h-8 px-3 text-xs font-medium rounded-lg border border-[rgba(123,28,28,0.12)] text-[#5A3A3A] hover:bg-maroon-50 disabled:opacity-40 disabled:pointer-events-none transition-colors"
-                    >
+                    <button type="button" onClick={() => setListPage((p) => Math.min(quotationData.pagination.pages, p + 1))} disabled={listPage === quotationData.pagination.pages} className="h-8 px-3 text-xs font-medium rounded-lg border border-[rgba(123,28,28,0.12)] text-[#5A3A3A] hover:bg-maroon-50 disabled:opacity-40 disabled:pointer-events-none transition-colors">
                       Next →
                     </button>
                   </div>
@@ -1438,40 +1364,45 @@ const InvoiceGenerator = () => {
         )}
       </AnimatePresence>
 
-      {/* ── Invoice Detail Panel (slide-over) ─────────────────────────────── */}
+      {/* Detail Panel */}
       <AnimatePresence>
-        {viewInvoice && (
+        {viewQuotation && (
           <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[195]"
-              onClick={() => setViewInvoice(null)}
-            />
-            <InvoiceDetailPanel
-              invoice={viewInvoice}
-              onClose={() => setViewInvoice(null)}
-              onPdf={() => handleViewPdf(viewInvoice)}
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[195]" onClick={() => setViewQuotation(null)} />
+            <QuotationDetailPanel
+              quotation={viewQuotation}
+              onClose={() => setViewQuotation(null)}
+              onPdf={() => handleViewPdf(viewQuotation)}
+              onConvert={(q) => { setViewQuotation(null); setConvertConfirm(q); }}
             />
           </>
         )}
       </AnimatePresence>
 
-      {/* ── Missing Details Dialog ──────────────────────────────────────────── */}
+      {/* Convert Confirm Dialog */}
+      <ConfirmDialog
+        open={!!convertConfirm}
+        onClose={() => setConvertConfirm(null)}
+        onConfirm={() => convertConfirm && convertMut.mutate(convertConfirm._id)}
+        title="Convert to Invoice"
+        message={`Convert quotation ${convertConfirm?.quotationNumber} to an invoice? This will create a new invoice with the same items and mark the quotation as accepted.`}
+        confirmText={convertMut.isPending ? 'Converting…' : 'Convert'}
+        variant="primary"
+      />
+
+      {/* Missing Details Dialog */}
       <MissingDetailsDialog
         open={missingDialog.open}
-        onClose={() => setMissingDialog({ open: false, fields: [] })}
+        onClose={() => setMissingDialog({ open: false, fields: [], pendingData: null })}
         fields={missingDialog.fields}
         onSubmit={(values) => {
           setForm((f) => ({ ...f, ...values }));
-          setMissingDialog({ open: false, fields: [] });
-          submitInvoice(values.placeOfSupply || form.placeOfSupply, values.notes || form.notes);
+          setMissingDialog({ open: false, fields: [], pendingData: null });
+          submitQuotation(values.eventLocation || form.eventLocation, values.serviceVenue || form.serviceVenue);
         }}
       />
     </div>
   );
 };
 
-export default InvoiceGenerator;
+export default QuotationGenerator;

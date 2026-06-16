@@ -1383,6 +1383,7 @@ export const buildInvoiceGeneratorHTML = ({
   billTo,
   settlementBy,
   placeOfSupply,
+  purpose,
   items,
   subtotalQty,
   subtotalAmount,
@@ -1851,7 +1852,7 @@ export const buildInvoiceGeneratorHTML = ({
 
     <div class="content">
       <div class="bill-type-box">
-        <div class="bill-type-title">TAX INVOICE</div>
+        <div class="bill-type-title">INVOICE</div>
         <div class="bill-type-original">ORIGINAL</div>
       </div>
 
@@ -1886,18 +1887,18 @@ export const buildInvoiceGeneratorHTML = ({
 
       <div class="divider"></div>
 
-      <!-- Bill To / Settlement By -->
+      <!-- To / Purpose -->
       <div class="bill-ship-row">
         <div class="bill-to-section">
-          <div class="section-label">Bill To</div>
+          <div class="section-label">To</div>
           <div class="section-value">${billTo}</div>
           <div class="place-supply">
-            <span class="place-supply-label">Place of Supply</span> ${placeOfSupply}
+            <span class="place-supply-label">Department</span> ${placeOfSupply}
           </div>
         </div>
         <div class="ship-to-section">
-          <div class="section-label">${settlementBy ? 'Settlement By' : 'Ship To'}</div>
-          <div class="section-value">${settlementBy || billTo}</div>
+          <div class="section-label">${settlementBy ? 'Settlement By' : 'Purpose'}</div>
+          <div class="section-value">${settlementBy || purpose || billTo}</div>
         </div>
       </div>
 
@@ -1968,6 +1969,681 @@ export const buildInvoiceGeneratorHTML = ({
           <div class="signature-box">
             <div class="signature-image">${signatureSVG}</div>
             <div class="signature-label">Signature</div>
+            <div class="signature-company">Balaji Perfect Caters</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
+/**
+ * Builds the HTML string for the Quotation Generator.
+ * Same gold-border ornamental design, but with:
+ * - Title: "QUOTATION" instead of "TAX INVOICE"
+ * - Fields: Customer Details, Event Location, Service Venue
+ * - Validity date
+ * - Terms & Conditions section
+ * - No bank details
+ */
+export const buildQuotationHTML = ({
+  quotationNo,
+  quotationDate,
+  validUntil,
+  customerName,
+  customerOrg,
+  customerPhone,
+  eventLocation,
+  serviceVenue,
+  items,
+  subtotalQty,
+  subtotalAmount,
+  cgstRate = 0,
+  sgstRate = 0,
+  cgstAmount = 0,
+  sgstAmount = 0,
+  grandTotal,
+  amountInWords,
+  logoBase64,
+  notes,
+  termsAndConditions,
+}) => {
+  // Build item rows
+  let itemRowsHTML = '';
+  items.forEach((item, index) => {
+    itemRowsHTML += `
+      <tr>
+        <td class="item-cell item-no">${index + 1}</td>
+        <td class="item-cell item-name">${item.name}</td>
+        <td class="item-cell item-qty">${item.qty} ${item.unit || 'NOS'}</td>
+        <td class="item-cell item-rate">${formatIndianNumber(item.rate)}</td>
+        <td class="item-cell item-total">${formatIndianNumber(item.total)}</td>
+      </tr>`;
+  });
+
+  const minRows = 10;
+  const emptyRowsNeeded = Math.max(0, minRows - items.length);
+  for (let i = 0; i < emptyRowsNeeded; i++) {
+    itemRowsHTML += `
+      <tr>
+        <td class="item-cell item-no">&nbsp;</td>
+        <td class="item-cell item-name">&nbsp;</td>
+        <td class="item-cell item-qty">&nbsp;</td>
+        <td class="item-cell item-rate">&nbsp;</td>
+        <td class="item-cell item-total">&nbsp;</td>
+      </tr>`;
+  }
+
+  // Build terms lines
+  let termsHTML = '';
+  if (termsAndConditions) {
+    const lines = termsAndConditions.split('\n').filter(l => l.trim());
+    termsHTML = lines.map((line, i) => `<div style="margin-bottom:2px;">${i + 1}. ${line.trim()}</div>`).join('');
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quotation - ${quotationNo}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;800&family=Inter:wght@300;400;500;600;700&display=swap');
+
+    @page {
+      size: A4;
+      margin: 0;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+      color: #1a1a2e;
+      background: #FFFFFF;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      width: 210mm;
+      height: 297mm;
+      position: relative;
+      overflow: hidden;
+      background: #FFFFFF;
+    }
+
+    /* ─── DECORATIVE GOLD BORDER ─── */
+    .border-outer {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      right: 10px;
+      bottom: 10px;
+      border: 2px solid #C9A84C;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .border-inner {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      right: 15px;
+      bottom: 15px;
+      border: 1px solid #C9A84C;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* Corner ornaments */
+    .corner {
+      position: absolute;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .corner-tl { top: 4px; left: 4px; }
+    .corner-tr { top: 4px; right: 4px; transform: scaleX(-1); }
+    .corner-bl { bottom: 4px; left: 4px; transform: scaleY(-1); }
+    .corner-br { bottom: 4px; right: 4px; transform: scale(-1, -1); }
+
+    /* ─── CONTENT AREA ─── */
+    .content {
+      position: relative;
+      z-index: 1;
+      padding: 28px 32px 20px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── HEADER SECTION ─── */
+    .header {
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+      padding-bottom: 18px;
+    }
+
+    .header-logo {
+      width: 90px;
+      height: 90px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    .header-info {
+      flex: 1;
+      padding-top: 6px;
+    }
+
+    .company-name {
+      font-family: 'Playfair Display', Georgia, 'Times New Roman', serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: #1a1a2e;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }
+
+    .gstin-line {
+      font-size: 11px;
+      color: #1a1a2e;
+      margin-bottom: 5px;
+    }
+
+    .gstin-label {
+      font-weight: 700;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .address-line {
+      font-size: 11px;
+      color: #666666;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .address-pin {
+      color: #D4A017;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    /* ─── QUOTATION BOX (top-right) ─── */
+    .bill-type-box {
+      position: absolute;
+      top: 28px;
+      right: 32px;
+      z-index: 5;
+      text-align: center;
+    }
+
+    .bill-type-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a2e;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+
+    .bill-type-original {
+      border: 1px solid #333333;
+      padding: 3px 20px;
+      font-size: 10px;
+      color: #555555;
+      background: #f9f9f9;
+      display: inline-block;
+    }
+
+    /* ─── DIVIDER ─── */
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: #cccccc;
+    }
+
+    /* ─── QUOTATION META ROW ─── */
+    .invoice-meta {
+      display: flex;
+      padding: 12px 0;
+      gap: 40px;
+    }
+
+    .meta-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .meta-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 2px;
+    }
+
+    .meta-value {
+      font-size: 12px;
+      color: #1a1a2e;
+      font-weight: 400;
+    }
+
+    .meta-value.validity {
+      color: #C9A84C;
+      font-weight: 600;
+    }
+
+    /* ─── CUSTOMER DETAILS / SERVICE VENUE ─── */
+    .bill-ship-row {
+      display: flex;
+      border: 1px solid #e0e0e0;
+      border-radius: 2px;
+    }
+
+    .bill-to-section {
+      flex: 1;
+      padding: 12px 16px;
+    }
+
+    .ship-to-section {
+      flex: 1;
+      padding: 12px 16px;
+      border-left: 1px solid #e0e0e0;
+    }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+    }
+
+    .section-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 3px;
+    }
+
+    .section-sub {
+      font-size: 11px;
+      color: #444;
+      margin-bottom: 2px;
+    }
+
+    .place-supply {
+      font-size: 11px;
+      color: #1a1a2e;
+    }
+
+    .place-supply-label {
+      font-weight: 700;
+    }
+
+    /* ─── ITEMS TABLE ─── */
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 14px;
+      flex: 1;
+    }
+
+    .items-table thead th {
+      background: rgba(244, 197, 192, 0.45);
+      color: #1a1a2e;
+      font-weight: 700;
+      font-size: 11px;
+      padding: 9px 10px;
+      text-align: left;
+      border-bottom: 1px solid #e8d8d5;
+    }
+
+    .items-table thead th.th-no {
+      width: 6%;
+      text-align: center;
+    }
+
+    .items-table thead th.th-items {
+      width: 48%;
+      text-align: left;
+    }
+
+    .items-table thead th.th-qty {
+      width: 14%;
+      text-align: center;
+    }
+
+    .items-table thead th.th-rate {
+      width: 14%;
+      text-align: center;
+    }
+
+    .items-table thead th.th-total {
+      width: 18%;
+      text-align: right;
+    }
+
+    .item-cell {
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #1a1a2e;
+      border-bottom: 1px solid #f2f2f2;
+      vertical-align: middle;
+    }
+
+    .item-no { text-align: center; }
+    .item-name { text-align: left; }
+    .item-qty { text-align: center; }
+    .item-rate { text-align: center; }
+    .item-total { text-align: right; }
+
+    /* ─── SUBTOTAL ROW ─── */
+    .subtotal-row {
+      background: rgba(244, 197, 192, 0.45);
+    }
+
+    .subtotal-row td {
+      padding: 9px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #1a1a2e;
+      border-top: 1px solid #e8d8d5;
+    }
+
+    /* ─── BOTTOM SECTION: TERMS + TOTALS ─── */
+    .bottom-section {
+      display: flex;
+      margin-top: 8px;
+      gap: 0;
+    }
+
+    .terms-left {
+      flex: 1;
+      padding: 10px 20px 0 0;
+    }
+
+    .terms-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+
+    .terms-content {
+      font-size: 10px;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    .notes-section {
+      margin-top: 10px;
+    }
+
+    .notes-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 4px;
+    }
+
+    .notes-content {
+      font-size: 10px;
+      color: #444;
+      line-height: 1.5;
+    }
+
+    .totals-section {
+      flex: 1;
+      padding: 0 0 0 20px;
+      border-left: 1px solid #e0e0e0;
+    }
+
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 8px 0;
+      border-top: 1px solid #cccccc;
+    }
+
+    .total-row:first-child {
+      border-top: 2px solid #cccccc;
+    }
+
+    .total-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .total-value {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a1a2e;
+    }
+
+    .received-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 6px 0;
+    }
+
+    .received-label {
+      font-size: 11px;
+      color: #1a1a2e;
+      font-weight: 400;
+    }
+
+    .received-value {
+      font-size: 12px;
+      color: #1a1a2e;
+      font-weight: 400;
+    }
+
+    .amount-words-section {
+      padding: 8px 0 0 0;
+      border-top: 1px solid #e0e0e0;
+      margin-top: 4px;
+    }
+
+    .amount-words-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 2px;
+    }
+
+    .amount-words-value {
+      font-size: 10.5px;
+      color: #444444;
+      font-weight: 400;
+    }
+
+    /* ─── SIGNATURE BOX ─── */
+    .signature-box {
+      border: 1px solid #cccccc;
+      border-radius: 6px;
+      padding: 10px 16px 8px;
+      text-align: center;
+      margin-top: 12px;
+      margin-left: auto;
+      width: 210px;
+    }
+
+    .signature-image {
+      margin-bottom: 2px;
+    }
+
+    .signature-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 1px;
+    }
+
+    .signature-company {
+      font-size: 10px;
+      color: #444444;
+      font-weight: 400;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="border-outer"></div>
+    <div class="border-inner"></div>
+
+    <div class="corner corner-tl">${cornerOrnamentSVG}</div>
+    <div class="corner corner-tr">${cornerOrnamentSVG}</div>
+    <div class="corner corner-bl">${cornerOrnamentSVG}</div>
+    <div class="corner corner-br">${cornerOrnamentSVG}</div>
+
+    <div class="content">
+      <div class="bill-type-box">
+        <div class="bill-type-title">QUOTATION</div>
+        <div class="bill-type-original">ESTIMATE</div>
+      </div>
+
+      <!-- Header -->
+      <div class="header">
+        ${logoBase64 ? `<img src="${logoBase64}" class="header-logo" alt="BPC Logo" />` : ''}
+        <div class="header-info">
+          <div class="company-name">Balaji Perfect Caters</div>
+          <div class="gstin-line">
+            <span class="gstin-label">GSTIN</span>&nbsp; 33CADPB6649D1Z3
+          </div>
+          <div class="address-line">
+            <span class="address-pin">📍</span>
+            <span>Raaj Iswariyam, Cantonment, Trichy, Trichy, Tamil Nadu, 620001</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Quotation Meta -->
+      <div class="invoice-meta">
+        <div class="meta-group">
+          <span class="meta-label">Quotation No.</span>
+          <span class="meta-value">${quotationNo}</span>
+        </div>
+        <div class="meta-group">
+          <span class="meta-label">Date</span>
+          <span class="meta-value">${quotationDate}</span>
+        </div>
+        <div class="meta-group">
+          <span class="meta-label">Valid Until</span>
+          <span class="meta-value validity">${validUntil}</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Customer Details / Service Venue -->
+      <div class="bill-ship-row">
+        <div class="bill-to-section">
+          <div class="section-label">Customer Details</div>
+          <div class="section-value">${customerName}</div>
+          ${customerOrg ? `<div class="section-sub">${customerOrg}</div>` : ''}
+          ${customerPhone ? `<div class="section-sub">📞 ${customerPhone}</div>` : ''}
+          <div class="place-supply">
+            <span class="place-supply-label">Event Location</span> ${eventLocation || '—'}
+          </div>
+        </div>
+        <div class="ship-to-section">
+          <div class="section-label">Service Venue</div>
+          <div class="section-value">${serviceVenue || eventLocation || '—'}</div>
+        </div>
+      </div>
+
+      <!-- Items Table -->
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th class="th-no">No</th>
+            <th class="th-items">Items / Services</th>
+            <th class="th-qty">Qty.</th>
+            <th class="th-rate">Rate</th>
+            <th class="th-total">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemRowsHTML}
+          <!-- Subtotal -->
+          <tr class="subtotal-row">
+            <td></td>
+            <td style="font-weight:700;">SUBTOTAL</td>
+            <td style="text-align:center; font-weight:700;">${subtotalQty}</td>
+            <td></td>
+            <td style="text-align:right; font-weight:700;">₹ ${formatIndianNumber(subtotalAmount)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Bottom Section: Terms + Totals -->
+      <div class="bottom-section">
+        <div class="terms-left">
+          ${termsHTML ? `
+          <div class="terms-title">Terms & Conditions</div>
+          <div class="terms-content">${termsHTML}</div>
+          ` : ''}
+          ${notes ? `
+          <div class="notes-section">
+            <div class="notes-title">Notes</div>
+            <div class="notes-content">${notes}</div>
+          </div>
+          ` : ''}
+        </div>
+
+        <div class="totals-section">
+          <!-- Subtotal -->
+          <div class="total-row">
+            <span class="total-label">Subtotal</span>
+            <span class="total-value">₹ ${formatIndianNumber(subtotalAmount)}</span>
+          </div>
+
+          ${cgstAmount > 0 ? `
+          <!-- CGST -->
+          <div class="received-row">
+            <span class="received-label">CGST @ ${cgstRate}%</span>
+            <span class="received-value">₹${formatIndianNumber(cgstAmount)}</span>
+          </div>
+
+          <!-- SGST -->
+          <div class="received-row">
+            <span class="received-label">SGST @ ${sgstRate}%</span>
+            <span class="received-value">₹${formatIndianNumber(sgstAmount)}</span>
+          </div>
+          ` : ''}
+
+          <!-- Grand Total -->
+          <div class="total-row">
+            <span class="total-label">Estimated Total</span>
+            <span class="total-value">₹ ${formatIndianNumber(grandTotal || subtotalAmount)}</span>
+          </div>
+
+          <!-- Amount in Words -->
+          <div class="amount-words-section">
+            <div class="amount-words-label">Amount (in words)</div>
+            <div class="amount-words-value">${amountInWords}</div>
+          </div>
+
+          <!-- Signature -->
+          <div class="signature-box">
+            <div class="signature-image">${signatureSVG}</div>
+            <div class="signature-label">Authorized Signatory</div>
             <div class="signature-company">Balaji Perfect Caters</div>
           </div>
         </div>

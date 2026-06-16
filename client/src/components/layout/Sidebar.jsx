@@ -13,6 +13,7 @@ const adminLinks = [
   { to: '/admin/employees', icon: UserCog, label: 'Employees' },
   { to: '/admin/bills', icon: Receipt, label: 'All Bills' },
   { to: '/admin/invoice-generator', icon: FileText, label: 'Invoice Gen' },
+  { to: '/admin/quotation-generator', icon: FileText, label: 'Quotation Gen' },
   { to: '/admin/statements', icon: FileText, label: 'Statements' },
   { to: '/admin/qr', icon: QrCode, label: 'QR Code' },
   { to: '/admin/settings', icon: Settings, label: 'Settings' },

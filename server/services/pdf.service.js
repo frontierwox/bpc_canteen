@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer-core';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { buildBillOfSupplyHTML, buildMonthlyStatementHTML, buildInvoiceGeneratorHTML } from '../templates/invoiceTemplate.js';
+import { buildBillOfSupplyHTML, buildMonthlyStatementHTML, buildInvoiceGeneratorHTML, buildQuotationHTML } from '../templates/invoiceTemplate.js';
 import { numberToWords as numberToWordsUtil, amountInWordsSimple } from '../utils/numberToWords.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -42,6 +42,8 @@ export const generateBillPDF = async (data, settings, type = 'monthly') => {
     ? buildMonthlyStatementPDFHTML(data, settings, logoBase64)
     : type === 'invoice_generator'
     ? buildInvoiceGeneratorPDFHTML(data, settings, logoBase64)
+    : type === 'quotation'
+    ? buildQuotationPDFHTML(data, settings, logoBase64)
     : buildInvoicePDFHTML(data, settings, logoBase64);
 
   let browser;
@@ -293,7 +295,8 @@ const buildInvoiceGeneratorPDFHTML = (data, settings, logoBase64) => {
     invoiceDate:    formatDate(data.invoiceDate),
     billTo:         customer.name || '',
     settlementBy:   data.settlementDetails?.settledByName || '',
-    placeOfSupply:  data.placeOfSupply || 'Tamil Nadu',
+    placeOfSupply:  customer.department || data.placeOfSupply || 'Tamil Nadu',
+    purpose:        data.notes || '',
     items:          templateItems,
     subtotalQty,
     subtotalAmount: data.subtotal,
@@ -305,5 +308,55 @@ const buildInvoiceGeneratorPDFHTML = (data, settings, logoBase64) => {
     amountInWords:  words,
     logoBase64,
     notes:          data.notes,
+  });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// QUOTATION PDF builder
+// ─────────────────────────────────────────────────────────────────────────────
+
+const buildQuotationPDFHTML = (data, settings, logoBase64) => {
+  const customer = data.customer || {};
+  const items    = data.items    || [];
+
+  const formatDate = (d) => {
+    if (!d) return '';
+    const istMs = new Date(d).getTime() + 330 * 60 * 1000;
+    const date  = new Date(istMs);
+    return `${String(date.getUTCDate()).padStart(2,'0')}/${String(date.getUTCMonth()+1).padStart(2,'0')}/${date.getUTCFullYear()}`;
+  };
+
+  const templateItems = items.map((item) => ({
+    name:  item.name,
+    qty:   item.quantity,
+    unit:  item.unit || 'NOS',
+    rate:  item.unitPrice,
+    total: item.totalPrice,
+  }));
+
+  const subtotalQty = items.reduce((sum, item) => sum + item.quantity, 0);
+  const words       = amountInWordsSimple(data.totalAmount);
+
+  return buildQuotationHTML({
+    quotationNo:      data.quotationNumber || '',
+    quotationDate:    formatDate(data.quotationDate),
+    validUntil:       formatDate(data.validUntil),
+    customerName:     customer.name || '',
+    customerOrg:      customer.organization || '',
+    customerPhone:    customer.phone || '',
+    eventLocation:    data.eventLocation || '',
+    serviceVenue:     data.serviceVenue || '',
+    items:            templateItems,
+    subtotalQty,
+    subtotalAmount:   data.subtotal,
+    cgstRate:         data.cgst || 0,
+    sgstRate:         data.sgst || 0,
+    cgstAmount:       data.cgstAmount || 0,
+    sgstAmount:       data.sgstAmount || 0,
+    grandTotal:       data.totalAmount,
+    amountInWords:    words,
+    logoBase64,
+    notes:            data.notes,
+    termsAndConditions: data.termsAndConditions,
   });
 };
