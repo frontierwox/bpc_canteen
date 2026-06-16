@@ -51,6 +51,77 @@ const MenuManagement = () => {
           </select>
         </div>
       </div>
+      
+      {/* Special Highlights Section */}
+      {!isLoading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Active Specials */}
+          <div className="bg-surface-card p-5 rounded-2xl border border-[rgba(212,160,23,0.3)] shadow-[0_4px_20px_rgba(212,160,23,0.06)] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-[rgba(212,160,23,0.12)] to-transparent rounded-bl-full pointer-events-none" />
+            <h2 className="flex items-center gap-2 text-lg font-bold text-maroon-800 mb-4">
+              <Star className="w-5 h-5 text-gold-500 fill-gold-500" /> Active Special Items
+            </h2>
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+              {items.filter(i => i.isAvailable && i.hasSpecialPrice).length > 0 ? (
+                items.filter(i => i.isAvailable && i.hasSpecialPrice).map(item => (
+                  <div key={item._id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-[rgba(212,160,23,0.2)] shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-maroon-50 flex-shrink-0">
+                        {item.image?.url ? <img src={item.image.url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-maroon-300 font-bold">B</div>}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[14px] text-maroon-900">{item.name}</p>
+                        <p className="text-[11px] text-gold-600 font-bold uppercase tracking-wider">{item.specialPrice?.label || 'Special Offer'}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-[15px] text-maroon-700">{formatINR(item.effectivePrice)}</p>
+                      <p className="text-[11px] text-[#9A7A7A] line-through">{formatINR(item.basePrice)}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 bg-white/50 rounded-xl border border-dashed border-[rgba(212,160,23,0.2)]">
+                  <p className="text-[13px] text-[#9A7A7A]">No active specials right now.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Active Combos */}
+          <div className="bg-surface-card p-5 rounded-2xl border border-[rgba(123,28,28,0.15)] shadow-[0_4px_20px_rgba(123,28,28,0.04)] relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-[rgba(123,28,28,0.06)] to-transparent rounded-bl-full pointer-events-none" />
+            <h2 className="flex items-center gap-2 text-lg font-bold text-maroon-800 mb-4">
+              <Leaf className="w-5 h-5 text-maroon-500" /> Active Combo Items
+            </h2>
+            <div className="space-y-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+              {items.filter(i => i.isAvailable && i.isCombo).length > 0 ? (
+                items.filter(i => i.isAvailable && i.isCombo).map(item => (
+                  <div key={item._id} className="flex items-center justify-between p-3 bg-white rounded-xl border border-[rgba(123,28,28,0.1)] shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg overflow-hidden bg-maroon-50 flex-shrink-0">
+                        {item.image?.url ? <img src={item.image.url} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-maroon-300 font-bold">B</div>}
+                      </div>
+                      <div>
+                        <p className="font-semibold text-[14px] text-maroon-900">{item.name}</p>
+                        <p className="text-[11px] text-[#9A7A7A]">{item.category?.name}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-[15px] text-maroon-700">{formatINR(item.effectivePrice || item.basePrice)}</p>
+                      <span className="text-[10px] bg-maroon-50 text-maroon-700 px-1.5 py-0.5 rounded mt-1 inline-block uppercase font-bold border border-maroon-100">{item.unit}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-6 bg-white/50 rounded-xl border border-dashed border-[rgba(123,28,28,0.15)]">
+                  <p className="text-[13px] text-[#9A7A7A]">No active combos right now.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {isLoading ? <LoadingSpinner /> : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -134,11 +205,12 @@ const MenuManagement = () => {
 const MenuItemForm = ({ item, categories, onClose }) => {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
-  const toLocalISOString = (dateStr) => {
+  const toISTString = (dateStr) => {
     if (!dateStr) return '';
     const d = new Date(dateStr);
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 16);
+    // Add 5 hours and 30 minutes to get IST time
+    const istTime = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+    return istTime.toISOString().slice(0, 16);
   };
 
   const [formData, setFormData] = useState({
@@ -146,8 +218,8 @@ const MenuItemForm = ({ item, categories, onClose }) => {
     basePrice: item?.basePrice || '', unit: item?.unit || 'NOS', isVeg: item?.isVeg ?? true, isCombo: item?.isCombo ?? false, sortOrder: item?.sortOrder || 0, tags: item?.tags?.join(', ') || '',
     specialPriceActive: item?.specialPrice?.isActive ?? false,
     specialPriceAmount: item?.specialPrice?.price || '',
-    validFrom: toLocalISOString(item?.specialPrice?.validFrom),
-    validUntil: toLocalISOString(item?.specialPrice?.validUntil),
+    validFrom: toISTString(item?.specialPrice?.validFrom),
+    validUntil: toISTString(item?.specialPrice?.validUntil),
   });
   const [imageFile, setImageFile] = useState(null);
 
@@ -164,8 +236,8 @@ const MenuItemForm = ({ item, categories, onClose }) => {
       fd.append('specialPrice', JSON.stringify({ 
         isActive: formData.specialPriceActive, 
         price: formData.specialPriceAmount,
-        validFrom: formData.validFrom ? new Date(formData.validFrom).toISOString() : null,
-        validUntil: formData.validUntil ? new Date(formData.validUntil).toISOString() : null
+        validFrom: formData.validFrom ? new Date(formData.validFrom + "+05:30").toISOString() : null,
+        validUntil: formData.validUntil ? new Date(formData.validUntil + "+05:30").toISOString() : null
       }));
       if (imageFile) fd.append('image', imageFile);
 

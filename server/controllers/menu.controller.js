@@ -169,9 +169,11 @@ export const createMenuItem = asyncHandler(async (req, res) => {
   if (specialPrice) {
     const spParsed = typeof specialPrice === 'string' ? JSON.parse(specialPrice) : specialPrice;
     itemData.specialPrice = {
-      price:    spParsed.price    !== undefined ? Number(spParsed.price) : undefined,
-      label:    spParsed.label    || '',
-      isActive: spParsed.isActive === true || spParsed.isActive === 'true',
+      price:      spParsed.price    !== undefined ? Number(spParsed.price) : undefined,
+      label:      spParsed.label    || '',
+      isActive:   spParsed.isActive === true || spParsed.isActive === 'true',
+      validFrom:  spParsed.validFrom  ? new Date(spParsed.validFrom) : null,
+      validUntil: spParsed.validUntil ? new Date(spParsed.validUntil) : null,
     };
   }
 
@@ -234,9 +236,11 @@ export const updateMenuItem = asyncHandler(async (req, res) => {
   if (specialPrice !== undefined) {
     const spParsed = typeof specialPrice === 'string' ? JSON.parse(specialPrice) : specialPrice;
     item.specialPrice = {
-      price:    spParsed.price    !== undefined ? Number(spParsed.price)                                  : item.specialPrice?.price,
-      label:    spParsed.label    !== undefined ? spParsed.label                                          : item.specialPrice?.label,
-      isActive: spParsed.isActive !== undefined ? (spParsed.isActive === true || spParsed.isActive === 'true') : item.specialPrice?.isActive,
+      price:      spParsed.price      !== undefined ? Number(spParsed.price) : item.specialPrice?.price,
+      label:      spParsed.label      !== undefined ? spParsed.label : item.specialPrice?.label,
+      isActive:   spParsed.isActive   !== undefined ? (spParsed.isActive === true || spParsed.isActive === 'true') : item.specialPrice?.isActive,
+      validFrom:  spParsed.validFrom  !== undefined ? (spParsed.validFrom ? new Date(spParsed.validFrom) : null) : item.specialPrice?.validFrom,
+      validUntil: spParsed.validUntil !== undefined ? (spParsed.validUntil ? new Date(spParsed.validUntil) : null) : item.specialPrice?.validUntil,
     };
   }
 

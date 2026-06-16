@@ -636,14 +636,14 @@ export const buildBillOfSupplyHTML = ({
       <!-- Bill To / Ship To -->
       <div class="bill-ship-row">
         <div class="bill-to-section">
-          <div class="section-label">Bill To</div>
+          <div class="section-label">Billing Address</div>
           <div class="section-value">${billTo}</div>
           <div class="place-supply">
             <span class="place-supply-label">Place of Supply</span> ${placeOfSupply}
           </div>
         </div>
         <div class="ship-to-section">
-          <div class="section-label">Ship To</div>
+          <div class="section-label">Shipping Address</div>
           <div class="section-value">${shipTo || billTo}</div>
         </div>
       </div>
@@ -1278,14 +1278,14 @@ export const buildMonthlyStatementHTML = ({
       <!-- Bill To / Settlement By -->
       <div class="bill-ship-row">
         <div class="bill-to-section">
-          <div class="section-label">Bill To</div>
+          <div class="section-label">Billing Address</div>
           <div class="section-value">${billTo}</div>
           <div class="place-supply">
             <span class="place-supply-label">Place of Supply</span> ${placeOfSupply}
           </div>
         </div>
         <div class="ship-to-section">
-          <div class="section-label">${settlementBy ? 'Settlement By' : 'Ship To'}</div>
+          <div class="section-label">${settlementBy ? 'Settlement By' : 'Shipping Address'}</div>
           <div class="section-value">${settlementBy || billTo}</div>
         </div>
       </div>
