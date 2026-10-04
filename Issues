@@ -1,0 +1,907 @@
+# BPC Canteen — Full End-to-End Analysis & Master Fix Prompt
+
+> **Project:** `D:\balaji_canteen` — Balaji Perfect Caters Canteen Billing System  
+> **Stack:** Node.js (ESM) + Express + MongoDB/Mongoose (server) · React 18 + Vite + Zustand + TanStack Query (client)  
+> **Audit date:** June 2026
+
+---
+
+## PART 1 — ISSUES FOUND (Categorised by Severity)
+
+### 🔴 CRITICAL — Security (Must Fix Immediately)
+
+---
+
+#### C-1 · LIVE SECRETS IN `.env` COMMITTED TO REPOSITORY
+
+**File:** `server/.env`
+
+The `.gitignore` correctly excludes `.env`, but the file already exists on disk with **production-level live secrets**:
+
+| Secret | Value (LIVE — rotate immediately) |
+|--------|-----------------------------------|
+| `MONGODB_URI` | `mongodb+srv://balajicaters2026_db_user:YwRpGvVcuZ9UdzSW@cluster2.wsfilr4.mongodb.net/` |
+| `CLOUDINARY_API_KEY` | `665932759917717` |
+| `CLOUDINARY_API_SECRET` | `IypbBulabFeMIF9ZNJNxtV2lHtw` |
+| `EMAIL_PASS` | `fosz zjpi bvyn hdwr` (Gmail App Password) |
+| `ACCESS_TOKEN_SECRET` | `bpc_access_secret_change_in_production_32chars` (weak placeholder) |
+| `REFRESH_TOKEN_SECRET` | `bpc_refresh_secret_change_in_production_32chars` (weak placeholder) |
+
+**Action:** Rotate ALL of these credentials immediately. Use 64-character random secrets for JWT.
+
+---
+
+#### C-2 · JWT SECRETS ARE DANGEROUSLY WEAK
+
+**File:** `server/.env`
+
+`ACCESS_TOKEN_SECRET=bpc_access_secret_change_in_production_32chars` is a **predictable, guessable string**, not a cryptographically random secret. An attacker can forge admin tokens.
+
+**Fix:** Replace with `openssl rand -base64 64` output.
+
+---
+
+#### C-3 · `trust proxy` SET TO `1` (UNCONDITIONALLY)
+
+**File:** `server/app.js` — line `app.set('trust proxy', 1)`
+
+Setting `trust proxy` globally means any `X-Forwarded-For` header sent by a client can be trusted, allowing **IP spoofing to bypass rate limiting**. This should only be enabled in production on Vercel/behind a known proxy.
+
+---
+
+#### C-4 · REFRESH TOKEN STORED AS PLAIN STRING IN DATABASE
+
+**File:** `server/models/User.model.js`, `server/controllers/auth.controller.js`
+
+The `refreshToken` field stores the raw JWT. If the database is compromised, an attacker can directly inject that token into a cookie and get authenticated. It should be stored as a `sha256` hash — only the raw token is sent to the client.
+
+---
+
+#### C-5 · `rejectUnauthorized: false` IN EMAIL TRANSPORTER
+
+**File:** `server/services/email.service.js`
+
+```js
+tls: { rejectUnauthorized: false }
+```
+
+This disables TLS certificate verification, making the email channel vulnerable to **man-in-the-middle attacks**. Any SMTP traffic can be intercepted.
+
+---
+
+#### C-6 · ROUTE ORDER BUG — `GET /bills/:id` INTERCEPTS `GET /bills/customer/:customerId`
+
+**File:** `server/routes/bill.routes.js`
+
+```js
+router.get('/:id', getBillById);              // registered FIRST
+router.get('/customer/:customerId', getCustomerBills);  // never reached!
+```
+
+Express matches routes in registration order. The string `"customer"` will be treated as a bill ID, causing a Mongoose `CastError` (invalid ObjectId) instead of hitting the customer bills handler.
+
+---
+
+#### C-7 · NO INPUT VALIDATION ON `updateBill`, `updateCustomer`, `updateSettings`
+
+**Files:** `server/routes/bill.routes.js`, `server/routes/customer.routes.js`, `server/controllers/settings.controller.js`
+
+These PUT routes have zero `express-validator` middleware. Any garbage data (e.g., `taxRate: "DROP TABLE"`, negative prices, invalid dates) flows directly into Mongoose without sanitisation.
+
+---
+
+#### C-8 · `paymentMethod` ACCEPTED AS FREE TEXT ON PAYMENT RECORD
+
+**File:** `server/controllers/bill.controller.js` — `recordPayment`
+
+The `paymentMethod` field is set from `req.body.paymentMethod` with no validation against the model's enum (`cash`, `upi`, `bank_transfer`, `credit`, `other`). Mongoose's enum validation won't catch it here because `validateBeforeSave: false` is used on `bill.save()`.
+
+---
+
+### 🟠 HIGH — Logic & Data Integrity Bugs
+
+---
+
+#### H-1 · OUTSTANDING BALANCE DOUBLE-COUNTED ON `updateBill`
+
+**File:** `server/controllers/bill.controller.js` — `updateBill`
+
+When a monthly_credit bill is updated and the total changes, the code adjusts `outstandingBalance` with a `diff`. However, `bill.balanceDue` is recalculated as `Math.max(0, totalAmount - paidAmount)`, but **`paidAmount` is not reset on update** — so if a partial payment was already made, the diff calculation over-adjusts the customer's balance.
+
+---
+
+#### H-2 · `deleteCustomer` HAS NO GUARD FOR OUTSTANDING BALANCE
+
+**File:** `server/controllers/customer.controller.js` — `deleteCustomer`
+
+A customer with `outstandingBalance > 0` can be hard-deleted without any warning or barrier. All their bills and statements are cascade-deleted, permanently destroying financial records. There should be at minimum a check that balance is zero, or use soft-delete.
+
+---
+
+#### H-3 · `generateInvoiceNumber` IS NOT RACE-CONDITION SAFE ACROSS PROCESSES
+
+**File:** `server/utils/invoiceNumber.js`
+
+`Settings.findOneAndUpdate({}, { $inc: { invoiceCounter: 1 } }, { new: true, upsert: true })` is atomic per operation but when `upsert: true` is set with an empty filter `{}`, if the Settings document does not exist yet and **two requests arrive simultaneously**, both will attempt to upsert and one will get a duplicate key error. Use `{ upsert: true, setDefaultsOnInsert: true }` with a specific singleton key or ensure Settings is always seeded.
+
+---
+
+#### H-4 · `cartStore.updateQuantity` ALLOWS ZERO OR NEGATIVE QUANTITIES
+
+**File:** `client/src/store/cartStore.js`
+
+```js
+updateQuantity: (index, quantity) => {
+  const qty = Number(quantity) || 0;
+  // qty can be 0 or negative — no guard
+}
+```
+
+A quantity of `0` yields a `totalPrice` of `0` which gets submitted to the bill. The `createBill` controller validates `quantity: isInt({ min: 1 })` on the route, but the frontend lets the cart enter an invalid state silently.
+
+---
+
+#### H-5 · `bill.controller.js` — `createBill` DOES NOT VALIDATE `unitPrice` FOR CUSTOM ITEMS
+
+When `item.menuItem` is not provided (custom line item), `unitPrice` comes raw from `req.body.items[*].unitPrice`. There is no minimum check — a price of `0` or `-1` is accepted, producing a corrupted bill total.
+
+---
+
+#### H-6 · `checkAuth` IN `authStore` CALLS `getMe` TWICE ON COLD START
+
+**File:** `client/src/store/authStore.js`
+
+```js
+checkAuth: async () => {
+  try {
+    const { data } = await authAPI.getMe();    // call 1
+    ...
+  } catch {
+    try {
+      await authAPI.refreshToken();
+      const { data } = await authAPI.getMe();  // call 2 (unnecessary if getMe uses interceptor)
+```
+
+The axios interceptor in `axios.instance.js` already handles 401 → refresh → retry silently. So `checkAuth` will: (1) call `getMe`, (2) if 401, the interceptor silently refreshes and retries — but `authStore` then **also** catches the error and attempts another manual refresh, firing duplicate refresh requests and potentially two simultaneous `POST /auth/refresh-token` calls.
+
+---
+
+#### H-7 · `App.jsx` — `analytics` ROUTE RENDERS `AdminDashboard` (WRONG COMPONENT)
+
+**File:** `client/src/App.jsx`
+
+```jsx
+<Route path="analytics" element={<SuspenseWrapper><AdminDashboard /></SuspenseWrapper>} />
+```
+
+The analytics route renders the dashboard again. There is an `analyticsAPI` and analytics controllers on the server — there should be a dedicated `AnalyticsDashboard` component (or at least this shouldn't silently duplicate). This is likely a placeholder that was never replaced.
+
+---
+
+#### H-8 · `getStatementById` POPULATES `bills` BUT PDF DOES NOT
+
+**File:** `server/controllers/statement.controller.js`
+
+`getStatementById` uses `.populate('bills')` but `getStatementPDF` does **not** — it only fetches the statement without populating bill details. If `generateBillPDF` depends on bill item detail for the monthly format, the PDF will render incorrectly or with missing data.
+
+---
+
+### 🟡 MEDIUM — Best Practices, Performance & Reliability
+
+---
+
+#### M-1 · CONTENT SECURITY POLICY IS GLOBALLY DISABLED
+
+**File:** `server/app.js`
+
+```js
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }))
+```
+
+`contentSecurityPolicy: false` disables XSS protections for the entire API. The comment says "for PDF generation with inline styles" — but the API server never serves HTML pages. CSP on an API only matters for the health-check HTML fallback, which should not exist. This should be enabled with appropriate directives, or left enabled at default with a targeted override only for routes that need it.
+
+---
+
+#### M-2 · RATE LIMITER ORDER IS WRONG
+
+**File:** `server/app.js`
+
+```js
+app.use('/api/v1/auth/login', authLimiter);
+app.use('/api/v1/', apiLimiter);
+```
+
+The `authLimiter` (10 req/15min) on login is registered **before** `apiLimiter` (100 req/min on all `/api/v1/`). Login requests will therefore be counted by **both** limiters — the auth limiter correctly limits brute force, but the general limiter also consumes the login slot. More critically, `POST /api/v1/auth/forgot-password` is not rate-limited separately, allowing email bombing.
+
+---
+
+#### M-3 · `multer` MIME TYPE CHECK IS CLIENT-SIDE SPOOFABLE
+
+**File:** `server/middleware/upload.middleware.js`
+
+`file.mimetype` is taken from the HTTP `Content-Type` of the part — it is **not verified against the actual file bytes**. An attacker can upload a PHP/script file with `Content-Type: image/jpeg`. Use a library like `file-type` to verify magic bytes.
+
+---
+
+#### M-4 · MONGOOSE REGEX SEARCH IS NOT ESCAPED (ReDoS POTENTIAL)
+
+**Files:** `server/controllers/bill.controller.js`, `server/controllers/customer.controller.js`, `server/controllers/user.controller.js`, `server/controllers/menu.controller.js`
+
+```js
+filter.$or = [{ name: { $regex: search, $options: 'i' } }]
+```
+
+`search` from `req.query.search` is used directly in a MongoDB regex without escaping special characters. A search string like `(((((` will cause catastrophic backtracking (ReDoS). Escape with a helper: `search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`.
+
+---
+
+#### M-5 · `server/app.js` — NO EXPLICIT `Content-Type` FOR 404 HANDLER
+
+The 404 catch-all returns JSON, but `originalUrl` is directly interpolated:
+
+```js
+message: `Route not found: ${req.method} ${req.originalUrl}`
+```
+
+If `originalUrl` contained HTML-like characters (e.g., `/<script>`) and the response were ever rendered, this would be a reflected XSS. Use `encodeURIComponent` or omit the URL from the message.
+
+---
+
+#### M-6 · `client/.env` — `VITE_API_BASE_URL` HAS NO PRODUCTION VALUE
+
+**File:** `client/.env`
+
+```
+VITE_API_BASE_URL=http://localhost:5000/api/v1
+```
+
+This is the only `.env` file in the client. There is no `.env.production`. When deployed on Vercel the env variable must be set in the Vercel dashboard, but there is no `.env.example` for the client to document this.
+
+---
+
+#### M-7 · `server/vercel.json` — `api/index.js` DOES NOT EXIST
+
+**File:** `server/vercel.json`
+
+```json
+"api/index.js": { "maxDuration": 60 ... }
+```
+
+The entry point in `vercel.json` references `api/index.js` but the actual server file is `server.js`. This will cause Vercel deployments to fail with "no serverless function found". The `rewrites` destination is `/api` which also doesn't match.
+
+---
+
+#### M-8 · `email.service.js` — TRANSPORTER IS RECREATED ON EVERY SEND
+
+**File:** `server/services/email.service.js`
+
+`createTransporter()` is called inside `sendEmail()`, creating a new Nodemailer transport object (including SMTP connection pool) on every email. This is inefficient and can cause connection errors under load. The transporter should be a module-level singleton.
+
+---
+
+#### M-9 · `axios.instance.js` STORES ACCESS TOKEN IN `localStorage`
+
+**File:** `client/src/api/axios.instance.js`
+
+Access tokens in `localStorage` are accessible by any JavaScript on the page, making them vulnerable to **XSS token theft**. The refresh token is correctly in an httpOnly cookie. The access token should ideally be stored in memory (a module-level variable or Zustand store) and only persisted across page loads via the refresh-token cookie flow.
+
+---
+
+#### M-10 · `deleteUser` DOES NOT REASSIGN OR ANONYMISE BILLS
+
+**File:** `server/controllers/user.controller.js` — `deleteUser`
+
+When a user (employee) is hard-deleted, all their bills still have `createdBy: <deleted_id>`. Subsequent `.populate('createdBy', 'name email')` calls will return `null` for `createdBy`, causing potential `null` reference errors in the frontend when trying to display bill creator info.
+
+---
+
+#### M-11 · `settings.controller.js` — `uploadLogo` USES HARDCODED `upload_preset`
+
+```js
+upload_preset: 'menushop'
+```
+
+This preset is hardcoded and not from environment variables. If the Cloudinary preset changes or doesn't exist in a new environment, logo uploads will silently fail (the error is caught and swallowed in `createMenuItem` too).
+
+---
+
+#### M-12 · `bill.routes.js` — `updateBill` HAS NO ROLE RESTRICTION
+
+**File:** `server/routes/bill.routes.js`
+
+```js
+router.put('/:id', updateBill);
+```
+
+Any authenticated user (including employees) can call `PUT /bills/:id`. The controller checks ownership for employees, but the route should explicitly communicate the intent. More critically, the controller's ownership check uses `bill.createdBy.toString()` — but `createdBy` is a Mongoose ObjectId, and after `.populate()` it becomes an object. However, since `.findById()` is used without `.populate()`, it remains an ObjectId — which is correct, but fragile (if populate is added later, the check silently breaks).
+
+---
+
+#### M-13 · MISSING GRACEFUL SHUTDOWN IN `server.js`
+
+**File:** `server/server.js`
+
+There is no `SIGTERM`/`SIGINT` handler to close the HTTP server and MongoDB connection cleanly. On Vercel/container restarts, in-flight requests will be dropped and MongoDB connections will be left dangling.
+
+---
+
+### 🟢 LOW — Code Quality & Minor Issues
+
+---
+
+#### L-1 · `cartStore` — `setCustomer` CALLS `set()` TWICE
+
+```js
+setCustomer: (customerId, customerData) => {
+  set({ customerId, customerData });
+  if (customerData?.accountType === 'monthly_credit') {
+    set({ billType: 'monthly_credit', paymentMethod: 'credit' }); // second render
+  }
+},
+```
+
+This triggers two separate re-renders. Merge into one `set()` call.
+
+---
+
+#### L-2 · `App.jsx` — EMPLOYEE ROUTE ALLOWS ADMIN ACCESS BUT ADMIN LAYOUT IS NOT LOADED
+
+```jsx
+<Route path="/employee" element={<ProtectedRoute roles={['employee', 'admin']}><EmployeeLayout /></ProtectedRoute>}>
+```
+
+Admins can access `/employee` routes wrapped in `EmployeeLayout`, which may have a different sidebar/nav than `AdminLayout`. This is probably intentional (admin can test the employee view), but should be documented.
+
+---
+
+#### L-3 · `ErrorBoundary` HAS NO ERROR REPORTING / LOGGING
+
+`componentDidCatch` only `console.error`. In production, errors should be reported to a service (Sentry, LogRocket, etc.) or at minimum persisted.
+
+---
+
+#### L-4 · `invoiceNumber.js` — COUNTER IS GLOBAL, NOT PER-YEAR
+
+The invoice counter never resets, so numbers go `BPC001, BPC002, ... BPC9999, BPC10000` across all years. Most businesses expect `BPC/2026/001` or an annual reset. Consider adding year to the counter key.
+
+---
+
+#### L-5 · `QueryClient` RETRY SET TO `1` BUT NO `onError` GLOBAL HANDLER
+
+**File:** `client/src/main.jsx`
+
+The `QueryClient` has `retry: 1` but no `onError` callback. Failed queries (e.g., auth errors, network errors) will silently fail with no user notification unless each `useQuery` caller individually handles the error.
+
+---
+
+#### L-6 · `client/src/store/authStore.js` — `checkAuth` DEPENDENCY IN `useEffect`
+
+**File:** `client/src/App.jsx`
+
+```jsx
+useEffect(() => { checkAuth(); }, [checkAuth]);
+```
+
+`checkAuth` is a function defined inside the Zustand store. Zustand functions are stable references (they don't change), so this won't cause infinite loops — but ESLint will warn. Should either use an empty dependency array or wrap with `useCallback`.
+
+---
+
+#### L-7 · `server/config/db.js` — CONNECTION OPTIONS USE DEPRECATED PARAMETERS
+
+`socketTimeoutMS: 45000` affects all socket reads. For Vercel serverless, the recommended pattern is to reuse existing connections with `mongoose.connection.readyState` checks rather than always calling `mongoose.connect`.
+
+---
+
+#### L-8 · `output.css` IS COMMITTED TO REPOSITORY
+
+**File:** `client/src/output.css` (68 KB)
+
+Generated build artifact should not be in source control. Add `src/output.css` to `.gitignore`.
+
+---
+
+---
+
+## PART 2 — MASTER FIX PROMPT
+
+Copy and paste this entire prompt as a single instruction to your AI coding assistant (or apply manually). It describes every fix precisely in the correct order.
+
+---
+
+```
+You are a senior full-stack engineer performing a targeted security and bug-fix pass on the BPC Canteen billing system (balaji_canteen repo). Apply ALL of the following fixes exactly as specified. Make no stylistic changes beyond what is described. Preserve all existing logic unless a fix explicitly changes it.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 1 — server/.env  [SECURITY — Rotate & Strengthen Secrets]
+────────────────────────────────────────────────────────────────────────────────
+1a. Replace ACCESS_TOKEN_SECRET and REFRESH_TOKEN_SECRET with cryptographically 
+    random 64-character base64 strings (run `openssl rand -base64 64` for each).
+1b. The MongoDB URI, Cloudinary credentials, and Gmail App Password in this file 
+    are LIVE secrets that must be rotated in the respective dashboards immediately.
+    After rotation, update .env with the new values.
+1c. Add a note at the top of .env:
+    # SECURITY: Never commit this file. All secrets below must be rotated 
+    # before first production deployment.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 2 — server/app.js  [SECURITY — trust proxy + CSP + rate limiter order]
+────────────────────────────────────────────────────────────────────────────────
+2a. Change unconditional `app.set('trust proxy', 1)` to:
+      if (process.env.NODE_ENV === 'production') {
+        app.set('trust proxy', 1);
+      }
+
+2b. Re-enable helmet's Content-Security-Policy by replacing:
+      helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false })
+    with:
+      helmet({
+        contentSecurityPolicy: {
+          directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc:  ["'self'"],
+            styleSrc:   ["'self'", "'unsafe-inline'"],
+            imgSrc:     ["'self'", 'data:', 'https://res.cloudinary.com'],
+            connectSrc: ["'self'"],
+          },
+        },
+        crossOriginEmbedderPolicy: false,
+      })
+
+2c. Add a dedicated rate limiter for forgot-password (BEFORE the existing limiters):
+      const forgotPasswordLimiter = rateLimit({
+        windowMs: 60 * 60 * 1000, // 1 hour
+        max: 5,
+        message: { success: false, message: 'Too many password reset requests. Try again in 1 hour.' },
+        standardHeaders: true,
+        legacyHeaders: false,
+      });
+    Then register it:
+      app.use('/api/v1/auth/forgot-password', forgotPasswordLimiter);
+    Place this line BEFORE the existing `app.use('/api/v1/auth/login', authLimiter)` line.
+
+2d. In the 404 handler, sanitise the URL in the response message:
+    Change:
+      message: `Route not found: ${req.method} ${req.originalUrl}`
+    To:
+      message: 'Route not found.'
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 3 — server/routes/bill.routes.js  [CRITICAL BUG — route order + validation]
+────────────────────────────────────────────────────────────────────────────────
+3a. Reorder routes so that specific paths are registered BEFORE parametric paths:
+    Move `router.get('/customer/:customerId', getCustomerBills)` to be the FIRST
+    GET route, ABOVE `router.get('/:id', getBillById)`.
+    Final route order must be:
+      router.get('/', getAllBills);
+      router.get('/customer/:customerId', getCustomerBills);
+      router.get('/:id', getBillById);
+      router.get('/:id/pdf', getBillPDF);
+      router.post('/', createBillValidation, validate, createBill);
+      router.put('/:id', updateBillValidation, validate, updateBill);
+      router.put('/:id/payment', paymentValidation, validate, recordPayment);
+      router.delete('/:id/void', authorize('admin'), voidBill);
+
+3b. Add `updateBillValidation` middleware (insert before existing router.put for '/:id'):
+      const updateBillValidation = [
+        body('items').optional().isArray({ min: 1 }).withMessage('Items must be a non-empty array'),
+        body('items.*.quantity').optional().isInt({ min: 1 }).withMessage('Quantity must be at least 1'),
+        body('items.*.unitPrice').optional().isFloat({ min: 0.01 }).withMessage('Unit price must be positive'),
+        body('items.*.name').optional().trim().notEmpty().withMessage('Item name cannot be empty'),
+        body('taxRate').optional().isFloat({ min: 0, max: 100 }).withMessage('Tax rate must be 0–100'),
+        body('discountAmount').optional().isFloat({ min: 0 }).withMessage('Discount cannot be negative'),
+      ];
+
+3c. Add enum validation to `paymentValidation`:
+      body('paymentMethod')
+        .optional()
+        .isIn(['cash', 'upi', 'bank_transfer', 'credit', 'other'])
+        .withMessage('Invalid payment method'),
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 4 — server/controllers/bill.controller.js  [Logic bugs]
+────────────────────────────────────────────────────────────────────────────────
+4a. In `createBill`, add validation for custom item unit price:
+    After:
+      const price = Number(unitPrice);
+    Add:
+      if (isNaN(price) || price <= 0) {
+        throw new ApiError(400, `Item "${name}" must have a positive unit price.`);
+      }
+
+4b. In `updateBill`, fix the outstanding balance diff calculation for paid bills.
+    Replace the existing diff block:
+      const diff = bill.totalAmount - oldTotal;
+      if (diff !== 0) {
+        await Customer.findByIdAndUpdate(bill.customer, { $inc: { outstandingBalance: diff } });
+      }
+    With:
+      // Only adjust by the change in unpaid (balance-due) portion
+      const oldBalanceDue = Math.max(0, oldTotal - bill.paidAmount);
+      const newBalanceDue = Math.max(0, bill.totalAmount - bill.paidAmount);
+      const diff = newBalanceDue - oldBalanceDue;
+      if (diff !== 0) {
+        await Customer.findByIdAndUpdate(bill.customer, { $inc: { outstandingBalance: diff } });
+      }
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 5 — server/controllers/auth.controller.js  [SECURITY — refresh token hashing]
+────────────────────────────────────────────────────────────────────────────────
+5a. In `generateTokens`, hash the refresh token before saving to DB:
+    Replace:
+      user.refreshToken = refreshToken;
+    With:
+      const hashedRefreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+      user.refreshToken = hashedRefreshToken;
+    (Add `import crypto from 'crypto'` at the top of auth.controller.js if not present.)
+
+5b. In `refreshToken` controller, when comparing stored token, hash the incoming
+    token before comparing:
+    Replace:
+      if (user.refreshToken !== incomingRefreshToken) {
+    With:
+      const hashedIncoming = crypto.createHash('sha256').update(incomingRefreshToken).digest('hex');
+      if (user.refreshToken !== hashedIncoming) {
+
+5c. In `logout` controller, hash before clearing (for consistency):
+    Replace:
+      await User.findByIdAndUpdate(req.user._id, { refreshToken: '' });
+    With:
+      await User.findByIdAndUpdate(req.user._id, { $unset: { refreshToken: 1 } });
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 6 — server/controllers/customer.controller.js  [Logic — prevent unsafe delete]
+────────────────────────────────────────────────────────────────────────────────
+In `deleteCustomer`, add a guard before the cascade delete:
+  if (customer.outstandingBalance > 0) {
+    throw new ApiError(
+      400,
+      `Cannot delete customer with outstanding balance of ₹${customer.outstandingBalance}. ` +
+      `Settle all dues or manually zero the balance before deleting.`
+    );
+  }
+Place this immediately after the `if (!customer)` check.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 7 — server/controllers/user.controller.js  [Logic — soft-anonymise on delete]
+────────────────────────────────────────────────────────────────────────────────
+In `deleteUser`, before `findByIdAndDelete`, anonymise bill references:
+  // Nullify createdBy on bills to avoid broken populate references
+  await Bill.updateMany({ createdBy: req.params.id }, { $set: { createdBy: null } });
+Add `import Bill from '../models/Bill.model.js'` at the top if not already imported.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 8 — server/controllers/customer.controller.js + user.controller.js + bill.controller.js + menu.controller.js  [SECURITY — Regex escape]
+────────────────────────────────────────────────────────────────────────────────
+In EVERY file that uses `{ $regex: search, $options: 'i' }`, escape the search term
+first. Add this helper function at the top of each controller file (or create a
+shared `server/utils/escapeRegex.js`):
+
+  // utils/escapeRegex.js
+  export const escapeRegex = (str) =>
+    str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+Then in each controller, change:
+  { name: { $regex: search, $options: 'i' } }
+To:
+  { name: { $regex: escapeRegex(search), $options: 'i' } }
+
+Apply this to ALL four controllers: bill, customer, user, menu.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 9 — server/services/email.service.js  [SECURITY + Performance]
+────────────────────────────────────────────────────────────────────────────────
+9a. Remove `tls: { rejectUnauthorized: false }`.
+    Replace with:
+      tls: { rejectUnauthorized: process.env.NODE_ENV === 'production' }
+    This keeps TLS verification enforced in production and relaxed only for local dev.
+
+9b. Move transporter creation to module level (singleton):
+    Before the `sendEmail` function, add:
+      let _transporter = null;
+      const getTransporter = () => {
+        if (!_transporter) {
+          _transporter = nodemailer.createTransport({
+            host:   process.env.EMAIL_HOST || 'smtp.gmail.com',
+            port:   Number(process.env.EMAIL_PORT) || 587,
+            secure: false,
+            auth:   { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+            tls:    { rejectUnauthorized: process.env.NODE_ENV === 'production' },
+          });
+        }
+        return _transporter;
+      };
+    Then inside `sendEmail`, replace `const transporter = createTransporter()` with
+    `const transporter = getTransporter()`.
+    Remove the old `createTransporter` function.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 10 — server/middleware/upload.middleware.js  [SECURITY — file type verification]
+────────────────────────────────────────────────────────────────────────────────
+Install `file-type`:
+  cd server && npm install file-type
+
+Update upload.middleware.js to verify magic bytes:
+  import { fileTypeFromBuffer } from 'file-type';
+
+  // Change fileFilter to async version via a wrapper:
+  const fileFilter = (req, file, cb) => {
+    // Accept at multer stage based on declared mimetype; deep check happens in routes
+    const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new ApiError(400, `Invalid file type. Only JPEG, PNG, WebP, and GIF images are allowed.`), false);
+    }
+  };
+
+Then in menu.controller.js and settings.controller.js, add a magic-bytes check
+immediately after `if (req.file)`:
+  const { fileTypeFromBuffer } = await import('file-type');
+  const fileType = await fileTypeFromBuffer(req.file.buffer);
+  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  if (!fileType || !allowed.includes(fileType.mime)) {
+    throw new ApiError(400, 'Uploaded file is not a valid image.');
+  }
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 11 — server/server.js  [Reliability — graceful shutdown]
+────────────────────────────────────────────────────────────────────────────────
+After `app.listen(PORT, ...)` inside `startServer`, capture the server reference:
+  const server = app.listen(PORT, () => { ... });
+
+Then add graceful shutdown handlers BELOW `startServer()`:
+  const gracefulShutdown = async (signal) => {
+    console.log(`\n${signal} received — shutting down gracefully...`);
+    server.close(async () => {
+      await mongoose.connection.close();
+      console.log('MongoDB connection closed. Process exiting.');
+      process.exit(0);
+    });
+    // Force exit after 10 seconds if hanging
+    setTimeout(() => { process.exit(1); }, 10_000);
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+
+Add `import mongoose from 'mongoose'` at the top of server.js.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 12 — server/controllers/statement.controller.js  [Bug — populate bills for PDF]
+────────────────────────────────────────────────────────────────────────────────
+In `getStatementPDF`, change the query to also populate bills:
+  Replace:
+    const statement = await MonthlyStatement.findById(req.params.id)
+      .populate('customer', 'name organization department phone email address')
+      .populate('generatedBy', 'name')
+      .lean();
+  With:
+    const statement = await MonthlyStatement.findById(req.params.id)
+      .populate('customer', 'name organization department phone email address')
+      .populate('bills')
+      .populate('generatedBy', 'name')
+      .lean();
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 13 — server/vercel.json  [Deployment — wrong entry point]
+────────────────────────────────────────────────────────────────────────────────
+Replace the entire server/vercel.json with:
+  {
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "version": 2,
+    "builds": [
+      {
+        "src": "server.js",
+        "use": "@vercel/node",
+        "config": {
+          "maxDuration": 60,
+          "memory": 1024,
+          "includeFiles": "node_modules/@sparticuz/chromium/bin/**"
+        }
+      }
+    ],
+    "routes": [
+      { "src": "/(.*)", "dest": "/server.js" }
+    ]
+  }
+Note: Vercel Node.js serverless functions expect `module.exports` or a default
+HTTP handler. Wrap `app` in server.js exports for serverless compatibility, OR
+use a separate `api/index.js` that imports app and exports it.
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 14 — client/src/store/authStore.js  [Bug — duplicate refresh on cold start]
+────────────────────────────────────────────────────────────────────────────────
+Replace the entire `checkAuth` function with this version that avoids the
+double-refresh race condition:
+
+  checkAuth: async () => {
+    const token = localStorage.getItem('bpc_access_token');
+    if (!token) {
+      set({ isLoading: false, isAuthenticated: false });
+      return;
+    }
+    try {
+      // The axios interceptor handles 401→refresh automatically.
+      // A single getMe() call is all that is needed.
+      const { data } = await authAPI.getMe();
+      set({ user: data.data, isAuthenticated: true, isLoading: false });
+    } catch {
+      // If getMe fails even after interceptor refresh, session is truly expired.
+      localStorage.removeItem('bpc_access_token');
+      set({ user: null, isAuthenticated: false, isLoading: false });
+    }
+  },
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 15 — client/src/store/cartStore.js  [Bug — zero/negative quantity guard]
+────────────────────────────────────────────────────────────────────────────────
+In `updateQuantity`, replace:
+  const qty = Number(quantity) || 0;
+With:
+  const qty = Math.max(0, Number(quantity) || 0);
+And add an automatic item removal when quantity reaches zero:
+  updateQuantity: (index, quantity) => {
+    const qty = Math.max(0, Math.floor(Number(quantity)) || 0);
+    if (qty === 0) {
+      set({ items: get().items.filter((_, i) => i !== index) });
+      return;
+    }
+    const updated = [...get().items];
+    updated[index].quantity   = qty;
+    updated[index].totalPrice = qty * updated[index].unitPrice;
+    set({ items: updated });
+  },
+
+In `addItem`, fix the double-render in `setCustomer`:
+  setCustomer: (customerId, customerData) => {
+    const isCreditAccount = customerData?.accountType === 'monthly_credit';
+    set({
+      customerId,
+      customerData,
+      ...(isCreditAccount && { billType: 'monthly_credit', paymentMethod: 'credit' }),
+    });
+  },
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 16 — client/src/App.jsx  [Bug — wrong component on analytics route]
+────────────────────────────────────────────────────────────────────────────────
+The analytics route currently renders AdminDashboard. Until a dedicated
+AnalyticsDashboard component exists, at minimum add a redirect or placeholder.
+Replace:
+  <Route path="analytics" element={<SuspenseWrapper><AdminDashboard /></SuspenseWrapper>} />
+With:
+  <Route path="analytics" element={<Navigate to="/admin" replace />} />
+This prevents a confusing duplicate dashboard being silently served.
+(When AnalyticsDashboard.jsx is created, replace Navigate with that component.)
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 17 — client/src/main.jsx  [Reliability — global query error handler]
+────────────────────────────────────────────────────────────────────────────────
+Add a global `onError` callback to QueryClient to surface silent failures:
+  import toast from 'react-hot-toast';
+
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 2 * 60 * 1000,
+        retry: 1,
+        refetchOnWindowFocus: false,
+      },
+    },
+    // Removed from defaultOptions; use mutationCache/queryCache instead:
+  });
+
+  // Global error handler using queryCache
+  queryClient.getQueryCache().subscribe(({ type, query }) => {
+    if (type === 'observerResultsUpdated') {
+      const state = query.state;
+      if (state.status === 'error' && !query.meta?.silent) {
+        const msg = state.error?.response?.data?.message || 'Something went wrong. Please try again.';
+        toast.error(msg, { id: `query-error-${query.queryHash}` });
+      }
+    }
+  });
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 18 — client/.gitignore + .gitignore  [Code Quality]
+────────────────────────────────────────────────────────────────────────────────
+In the root .gitignore, add:
+  client/src/output.css
+
+In client/.gitignore (create if not present), add:
+  src/output.css
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 19 — client/.env.example  [Documentation — create missing client env example]
+────────────────────────────────────────────────────────────────────────────────
+Create client/.env.example with:
+  # Base URL for the BPC Canteen API
+  # Local development:
+  VITE_API_BASE_URL=http://localhost:5000/api/v1
+  # Production (set this in Vercel Dashboard → Settings → Environment Variables):
+  # VITE_API_BASE_URL=https://your-api-domain.vercel.app/api/v1
+
+  VITE_APP_NAME=BPC Canteen
+
+────────────────────────────────────────────────────────────────────────────────
+FIX 20 — server/utils/escapeRegex.js  [New file — shared regex escape helper]
+────────────────────────────────────────────────────────────────────────────────
+Create server/utils/escapeRegex.js:
+  /**
+   * Escapes special regex characters in a string to prevent ReDoS attacks.
+   * Use this on any user-supplied search term before using in MongoDB $regex.
+   * @param {string} str
+   * @returns {string}
+   */
+  const escapeRegex = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  export default escapeRegex;
+
+Then import and use in ALL four controller files (bill, customer, user, menu)
+wherever `$regex: search` appears.
+
+────────────────────────────────────────────────────────────────────────────────
+POST-FIX CHECKLIST
+────────────────────────────────────────────────────────────────────────────────
+After applying all fixes above:
+
+[ ] Rotate MongoDB Atlas password (create new DB user, revoke old)
+[ ] Rotate Cloudinary API Secret (Cloudinary dashboard → Security)
+[ ] Revoke Gmail App Password and generate a new one
+[ ] Generate new ACCESS_TOKEN_SECRET: openssl rand -base64 64
+[ ] Generate new REFRESH_TOKEN_SECRET: openssl rand -base64 64
+[ ] Set all secrets as Environment Variables in Vercel (never in code)
+[ ] Run: npm audit in both /server and /client and resolve HIGH/CRITICAL
+[ ] Test: POST /api/v1/bills/customer/:customerId works (route order fix verification)
+[ ] Test: Login with old refresh tokens fails (hashing fix verification)
+[ ] Test: Forgot-password is blocked after 5 attempts in 1 hour
+[ ] Test: File upload with a renamed .php file is rejected
+[ ] Test: Search with `(((((` does not cause server hang (regex escape verification)
+[ ] Verify: Vercel deployment completes without "no serverless function" error
+[ ] Verify: Bill PDF for monthly statement renders all items correctly
+```
+
+---
+
+## PART 3 — ISSUE SUMMARY TABLE
+
+| ID   | Severity | Area              | Issue                                           | File(s)                        |
+|------|----------|-------------------|-------------------------------------------------|--------------------------------|
+| C-1  | 🔴 CRIT  | Security          | Live secrets in .env (DB, Cloudinary, Email)    | `server/.env`                  |
+| C-2  | 🔴 CRIT  | Security          | Weak predictable JWT secrets                    | `server/.env`                  |
+| C-3  | 🔴 CRIT  | Security          | `trust proxy 1` unconditional — IP spoofable    | `server/app.js`                |
+| C-4  | 🔴 CRIT  | Security          | Refresh token stored as plaintext in DB         | `auth.controller.js`           |
+| C-5  | 🔴 CRIT  | Security          | TLS disabled for email (`rejectUnauthorized`)   | `email.service.js`             |
+| C-6  | 🔴 CRIT  | Bug               | Route order: `/customer/:id` unreachable        | `bill.routes.js`               |
+| C-7  | 🔴 CRIT  | Security          | No input validation on updateBill/updateCustomer| `bill.routes.js`               |
+| C-8  | 🔴 CRIT  | Security          | paymentMethod enum bypass via validateBeforeSave| `bill.controller.js`           |
+| H-1  | 🟠 HIGH  | Logic             | Outstanding balance double-counted on update    | `bill.controller.js`           |
+| H-2  | 🟠 HIGH  | Logic             | deleteCustomer allows non-zero balance delete   | `customer.controller.js`       |
+| H-3  | 🟠 HIGH  | Reliability       | Invoice number upsert race condition            | `invoiceNumber.js`             |
+| H-4  | 🟠 HIGH  | Bug               | Cart allows zero-quantity items                 | `cartStore.js`                 |
+| H-5  | 🟠 HIGH  | Bug               | Custom item unitPrice ≤ 0 accepted              | `bill.controller.js`           |
+| H-6  | 🟠 HIGH  | Bug               | Double refresh token call on cold start         | `authStore.js`                 |
+| H-7  | 🟠 HIGH  | Bug               | Analytics route renders wrong component         | `App.jsx`                      |
+| H-8  | 🟠 HIGH  | Bug               | Statement PDF missing bill populate             | `statement.controller.js`      |
+| M-1  | 🟡 MED   | Security          | CSP entirely disabled on API                    | `app.js`                       |
+| M-2  | 🟡 MED   | Security          | forgot-password has no rate limit               | `app.js`                       |
+| M-3  | 🟡 MED   | Security          | File type verified by MIME only (spoofable)     | `upload.middleware.js`         |
+| M-4  | 🟡 MED   | Security          | Unescaped regex from user input (ReDoS)         | 4× controllers                 |
+| M-5  | 🟡 MED   | Security          | originalUrl reflected in 404 message (XSS)     | `app.js`                       |
+| M-6  | 🟡 MED   | Config            | No client .env.example documented               | `client/`                      |
+| M-7  | 🟡 MED   | Deployment        | vercel.json points to non-existent `api/index.js`| `server/vercel.json`          |
+| M-8  | 🟡 MED   | Performance       | Nodemailer transporter recreated every send     | `email.service.js`             |
+| M-9  | 🟡 MED   | Security          | Access token in localStorage (XSS-stealable)   | `axios.instance.js`            |
+| M-10 | 🟡 MED   | Logic             | Deleted user leaves broken bill.createdBy refs  | `user.controller.js`           |
+| M-11 | 🟡 MED   | Config            | Cloudinary upload_preset hardcoded              | `menu/settings.controller.js`  |
+| M-12 | 🟡 MED   | Bug               | updateBill has no explicit role restriction     | `bill.routes.js`               |
+| M-13 | 🟡 MED   | Reliability       | No graceful shutdown (SIGTERM/SIGINT)           | `server.js`                    |
+| L-1  | 🟢 LOW   | Performance       | setCustomer calls set() twice                   | `cartStore.js`                 |
+| L-2  | 🟢 LOW   | UX                | Admin can see employee layout without note      | `App.jsx`                      |
+| L-3  | 🟢 LOW   | Reliability       | ErrorBoundary has no error reporting            | `ErrorBoundary.jsx`            |
+| L-4  | 🟢 LOW   | Feature           | Invoice counter never resets per year           | `invoiceNumber.js`             |
+| L-5  | 🟢 LOW   | UX                | No global query error handler                  | `main.jsx`                     |
+| L-6  | 🟢 LOW   | Code Quality      | checkAuth ESLint dependency warning             | `App.jsx`                      |
+| L-7  | 🟢 LOW   | Config            | Mongoose options include deprecated params      | `config/db.js`                 |
+| L-8  | 🟢 LOW   | Code Quality      | output.css committed to source control          | `client/src/output.css`        |
+
+**Total:** 8 Critical · 8 High · 8 Medium · 8 Low = **32 issues**
